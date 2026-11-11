@@ -1436,9 +1436,17 @@ static int sts_pred_holds(sts_doc *a_doc, const sts_pred *a_pred, TSNode a_node,
 			l_result = sts_same_text(a_doc, a_node, a_pred->strings[i], a_pred->lengths[i]);
 		}
 		break;
-	default:
-		l_result = rx_search(a_pred->rx, a_doc->text + l_start, (int)(l_end - l_start), &a_doc->limited);
+	default: {
+		int l_limited = 0;
+		l_result = rx_search(a_pred->rx, a_doc->text + l_start, (int)(l_end - l_start), &l_limited);
+		if (l_limited) {
+			/* No answer is not "no": negated or not, the predicate fails, so a result
+			   under a limit may lack items and never gains one. */
+			a_doc->limited = 1;
+			return 0;
+		}
 		break;
+	}
 	}
 	return a_pred->negate ? !l_result : l_result;
 }
@@ -1860,10 +1868,14 @@ const char *sts_doc_node_at(sts_doc *a_doc, int32_t a_position, int32_t *an_info
 }
 
 struct sts_cursor {
+	TSTree *tree;	/* the cursor's own reference to the tree it walks */
 	TSTreeCursor cursor;
 };
 
 sts_cursor *sts_cursor_new(sts_doc *a_doc)
+	/* The cursor holds a reference to the tree (a count, not a copy of the nodes): an
+	   edit deletes the document's tree, and a cursor used after it would otherwise walk
+	   freed memory wherever no precondition stops the caller. */
 {
 	sts_cursor *l_cursor;
 	if (!a_doc || !a_doc->tree) {
@@ -1871,7 +1883,12 @@ sts_cursor *sts_cursor_new(sts_doc *a_doc)
 	}
 	l_cursor = (sts_cursor *)sts_alloc(sizeof(sts_cursor));
 	if (l_cursor) {
-		l_cursor->cursor = ts_tree_cursor_new(ts_tree_root_node(a_doc->tree));
+		l_cursor->tree = ts_tree_copy(a_doc->tree);
+		if (!l_cursor->tree) {
+			sts_free(l_cursor);
+			return NULL;
+		}
+		l_cursor->cursor = ts_tree_cursor_new(ts_tree_root_node(l_cursor->tree));
 	}
 	return l_cursor;
 }
@@ -1880,6 +1897,7 @@ void sts_cursor_free(sts_cursor *a_cursor)
 {
 	if (a_cursor) {
 		ts_tree_cursor_delete(&a_cursor->cursor);
+		ts_tree_delete(a_cursor->tree);
 		sts_free(a_cursor);
 	}
 }

@@ -11,8 +11,10 @@ class
 inherit
 	TS_INT_BLOCK
 
-create
+create {TS_DOCUMENT}
 	make_from_block
+			-- The object frees the block it is made from, so only the class that got the
+			-- block from the wrapper may make one.
 
 feature -- Access
 
