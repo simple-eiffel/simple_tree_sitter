@@ -110,9 +110,9 @@ feature -- Status report
 		end
 
 	was_limited: BOOLEAN
-			-- Did a limit cut short the last call of `spans', `folds', `bracket_at' or
-			-- `captures'? What it answered is then right as far as it goes, and may
-			-- lack items.
+			-- Did a limit cut short the last call of `spans', `spans_of', `folds',
+			-- `bracket_at', `bracket_pair_block' or `captures'? What it answered is
+			-- then right as far as it goes, and may lack items.
 		do
 			Result := c_doc_was_limited (handle)
 		end
@@ -163,7 +163,7 @@ feature -- Element change
 			count_not_negative: a_count >= 0
 			null_is_empty: a_block = default_pointer implies a_count = 0
 		do
-			c_doc_set_text (handle, a_block, a_count)
+			c_doc_set_text_block (handle, a_block, a_count)
 			c_free (a_block)
 			version := version + 1
 		ensure
@@ -182,7 +182,7 @@ feature -- Element change
 		local
 			l_done: BOOLEAN
 		do
-			l_done := c_doc_edit (handle, a_start - 1, a_removed, a_block, a_count)
+			l_done := c_doc_edit_block (handle, a_start - 1, a_removed, a_block, a_count)
 			c_free (a_block)
 			check range_was_in_text: l_done end
 			version := version + 1
@@ -203,6 +203,18 @@ feature -- Highlighting
 			n: INTEGER
 		do
 			l_block := c_doc_spans (handle, a_first_line - 1, a_last_line - 1, $n)
+			create Result.make_from_block (l_block, n)
+		end
+
+	spans_of (a_ranges: TS_LINE_RANGES): TS_SPANS
+			-- The highlight spans of the lines of every range of `a_ranges', in one
+			-- result, as `spans' gives them for one range. With `changed_lines' it is
+			-- the spans of every line owed.
+		local
+			l_block: POINTER
+			n: INTEGER
+		do
+			l_block := c_doc_spans_of (handle, a_ranges.block, a_ranges.count, $n)
 			create Result.make_from_block (l_block, n)
 		end
 
@@ -255,6 +267,16 @@ feature -- Structure
 				create Result.make (l_pair.read_integer_32 (0) + 1, l_pair.read_integer_32 (4),
 					l_pair.read_integer_32 (8) + 1, l_pair.read_integer_32 (12))
 			end
+		end
+
+	bracket_pair_block (a_position: INTEGER): POINTER
+			-- As `bracket_at', in a C block for handing to another processor: read it
+			-- with `new_bracket_pair' and free it with `free_block'. The null pointer
+			-- when there is no pair.
+		require
+			position_in_text: 1 <= a_position and a_position <= count + 1
+		do
+			Result := c_doc_bracket_pair (handle, a_position - 1)
 		end
 
 feature -- Trees, for tools and tests

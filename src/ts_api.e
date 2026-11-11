@@ -2,6 +2,18 @@ note
 	description: "[
 		The C wrapper's functions (Clib/simple_tree_sitter.h), one external each.
 		Positions and lines count from 0 here; the classes that inherit this add the 1.
+
+		Blocking calls. EiffelStudio's collector stops every thread before it
+		collects, and a thread inside a C external is only stopped when the
+		external returns: without more, a collection on an editor's processor
+		waits for a parse on the worker's (30 ms measured for one call on a text
+		of 40,000 lines, 128 ms on 160,000). An external marked `blocking' is left
+		out of that wait. The ones a TS_WORKER calls are marked so. A blocking
+		external must not be handed the address of an Eiffel object, which a
+		collection may move while the C code runs: these take C blocks and the
+		addresses of local integers only. `c_doc_set_text' and `c_doc_edit' take
+		the characters of an Eiffel string and so are not blocking; the worker
+		uses `c_doc_set_text_block' and `c_doc_edit_block'.
 	]"
 
 class
@@ -74,6 +86,23 @@ feature {NONE} -- Documents
 			"return (EIF_BOOLEAN) (sts_doc_edit((sts_doc *) $a_doc, (int32_t) $a_start, (int32_t) $a_removed, (const uint32_t *) $a_text, (int32_t) $an_inserted) != 0);"
 		end
 
+	c_doc_set_text_block (a_doc, a_text: POINTER; a_count: INTEGER)
+			-- As `c_doc_set_text', for a text in a C block. See `Blocking calls' in the
+			-- class's notes.
+		external
+			"C blocking inline use %"simple_tree_sitter.h%""
+		alias
+			"sts_doc_set_text((sts_doc *) $a_doc, (const uint32_t *) $a_text, (int32_t) $a_count);"
+		end
+
+	c_doc_edit_block (a_doc: POINTER; a_start, a_removed: INTEGER; a_text: POINTER; an_inserted: INTEGER): BOOLEAN
+			-- As `c_doc_edit', for a text in a C block.
+		external
+			"C blocking inline use %"simple_tree_sitter.h%""
+		alias
+			"return (EIF_BOOLEAN) (sts_doc_edit((sts_doc *) $a_doc, (int32_t) $a_start, (int32_t) $a_removed, (const uint32_t *) $a_text, (int32_t) $an_inserted) != 0);"
+		end
+
 	c_doc_count (a_doc: POINTER): INTEGER
 		external
 			"C inline use %"simple_tree_sitter.h%""
@@ -125,9 +154,23 @@ feature {NONE} -- Results
 			"return (EIF_POINTER) sts_doc_spans((sts_doc *) $a_doc, (int32_t) $a_first_line, (int32_t) $a_last_line, (int32_t *) $a_count);"
 		end
 
+	c_doc_spans_of (a_doc, a_ranges: POINTER; a_range_count: INTEGER; a_count: TYPED_POINTER [INTEGER]): POINTER
+		external
+			"C blocking inline use %"simple_tree_sitter.h%""
+		alias
+			"return (EIF_POINTER) sts_doc_spans_of((sts_doc *) $a_doc, (const int32_t *) $a_ranges, (int32_t) $a_range_count, (int32_t *) $a_count);"
+		end
+
+	c_doc_bracket_pair (a_doc: POINTER; a_position: INTEGER): POINTER
+		external
+			"C blocking inline use %"simple_tree_sitter.h%""
+		alias
+			"return (EIF_POINTER) sts_doc_bracket_pair((sts_doc *) $a_doc, (int32_t) $a_position);"
+		end
+
 	c_doc_changed_lines (a_doc: POINTER; a_count: TYPED_POINTER [INTEGER]): POINTER
 		external
-			"C inline use %"simple_tree_sitter.h%""
+			"C blocking inline use %"simple_tree_sitter.h%""
 		alias
 			"return (EIF_POINTER) sts_doc_changed_lines((sts_doc *) $a_doc, (int32_t *) $a_count);"
 		end
@@ -141,7 +184,7 @@ feature {NONE} -- Results
 
 	c_doc_folds (a_doc: POINTER; a_count: TYPED_POINTER [INTEGER]): POINTER
 		external
-			"C inline use %"simple_tree_sitter.h%""
+			"C blocking inline use %"simple_tree_sitter.h%""
 		alias
 			"return (EIF_POINTER) sts_doc_folds((sts_doc *) $a_doc, (int32_t *) $a_count);"
 		end

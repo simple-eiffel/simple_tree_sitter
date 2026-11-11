@@ -31,6 +31,12 @@ feature {NONE} -- Initialization
 			run_test (agent lib_tests.test_other_languages, "test_other_languages")
 			run_test (agent lib_tests.test_fixture_files, "test_fixture_files")
 			run_test (agent lib_tests.test_results_free_their_blocks, "test_results_free_their_blocks")
+			run_test (agent lib_tests.test_result_box, "test_result_box")
+			run_test (agent lib_tests.test_worker_step_by_step, "test_worker_step_by_step")
+			run_test (agent lib_tests.test_typing_cost, "test_typing_cost")
+			run_test (agent lib_tests.test_client_never_waits, "test_client_never_waits")
+			run_test (agent lib_tests.test_worker_converges, "test_worker_converges")
+			run_test (agent lib_tests.test_worker_gives_memory_back, "test_worker_gives_memory_back")
 
 			print ("%N========================%N")
 			print ("Results: " + passed.out + " passed, " + failed.out + " failed%N")
@@ -72,9 +78,13 @@ feature {NONE} -- Implementation
 		end
 
 	print_failure_detail
-			-- Say which assertion failed: the exception's tag and message.
+			-- Say what failed: the exception's kind, its trace, its tag and its message.
 		do
 			if attached (create {EXCEPTION_MANAGER}).last_exception as al_exception then
+				print ("        what: " + al_exception.generating_type.name_32.to_string_8 + "%N")
+				if attached al_exception.trace as al_trace then
+					print (al_trace.to_string_8.head (6000) + "%N")
+				end
 				if attached al_exception.tag as al_tag then
 					print ("        tag: " + al_tag.to_string_8 + "%N")
 				end

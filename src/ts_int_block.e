@@ -57,10 +57,26 @@ feature -- Status report
 			definition: Result = (1 <= i and i <= count)
 		end
 
-feature {NONE} -- Implementation
+feature -- Handing over
+
+	take_block: POINTER
+			-- The C block, for handing to another processor with the `count' read
+			-- before this call. It is the caller's to free from now on (TS_BLOCKS's
+			-- `free_block'), and this object is empty afterwards.
+		do
+			Result := block
+			block := default_pointer
+			count := 0
+		ensure
+			empty: is_empty
+		end
+
+feature {TS_INT_BLOCK, TS_DOCUMENT} -- Implementation
 
 	block: POINTER
 			-- The C block; null when empty.
+
+feature {NONE} -- Implementation
 
 	value (i, a_field: INTEGER): INTEGER
 			-- Integer `a_field' (from 0) of item `i', as the wrapper wrote it.

@@ -90,6 +90,10 @@ uint32_t *sts_text_new(const uint32_t *a_text, int32_t a_count);
 int32_t *sts_doc_spans(sts_doc *a_doc, int32_t a_first_line, int32_t a_last_line, int32_t *a_count);
 	/* Four integers per span: line, column, length, style. In order, never overlapping,
 	   never across a line end. */
+int32_t *sts_doc_spans_of(sts_doc *a_doc, const int32_t *a_ranges, int32_t a_range_count, int32_t *a_count);
+	/* The spans of the lines of each of `a_range_count' ranges, in one block as
+	   sts_doc_spans gives them. A range is two integers, its first and last line, as
+	   sts_doc_changed_lines and sts_doc_folds answer them. */
 int32_t *sts_doc_changed_lines(sts_doc *a_doc, int32_t *a_count);
 	/* Two integers per range: the first and last line of every range the document owes,
 	   in the text's line numbers as they are now, in order, joined where they touch.
@@ -105,9 +109,13 @@ int32_t sts_doc_bracket_at(sts_doc *a_doc, int32_t a_position, int32_t *a_pair);
 	   of a bracket pair: 1, with the open end's start and length and the close end's
 	   start and length in `a_pair' [0..3]. Otherwise 0. */
 
+int32_t *sts_doc_bracket_pair(sts_doc *a_doc, int32_t a_position);
+	/* As sts_doc_bracket_at, with the four integers in a block of their own; NULL when
+	   there is no pair, or one of its ends is not in the text. */
+
 int32_t sts_doc_was_limited(const sts_doc *a_doc);
-	/* Did a limit cut short the last call of sts_doc_spans, sts_doc_folds,
-	   sts_doc_bracket_at or sts_doc_run on this document? The limits are the query
+	/* Did a limit cut short the last call of sts_doc_spans, sts_doc_spans_of, sts_doc_folds,
+	   sts_doc_bracket_at, sts_doc_bracket_pair or sts_doc_run on this document? The limits are the query
 	   cursor's matches in progress and the steps one #match? test may take. A test the
 	   step limit stopped fails, #not-match? too: a limited result may lack items and
 	   never holds one it should not. */
