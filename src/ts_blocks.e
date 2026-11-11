@@ -1,7 +1,8 @@
 note
 	description: "[
-		Text in C blocks, for handing to the processor that owns a document.
-		A block is a copy: whoever is handed it frees it.
+		Text and answers in C blocks, for handing between the processor that
+		owns a document and the one that owns the text. A block is a copy:
+		whoever is handed it frees it.
 	]"
 
 class
@@ -30,9 +31,20 @@ feature -- Blocks
 		end
 
 	free_block (a_block: POINTER)
-			-- Free a block made by `new_text_block' and handed to nothing.
+			-- Free a block of this library's that was handed to nothing: one made by
+			-- `new_text_block', or one taken from a result or from a TS_RESULT_BOX.
+			-- The null pointer is fine.
 		do
 			c_free (a_block)
+		end
+
+	new_bracket_pair (a_block: POINTER): TS_BRACKET_PAIR
+			-- The pair in `a_block', a block from TS_DOCUMENT's `bracket_pair_block'.
+			-- The block is still the caller's to free.
+		require
+			has_block: a_block /= default_pointer
+		do
+			create Result.make (c_int_at (a_block, 0) + 1, c_int_at (a_block, 1), c_int_at (a_block, 2) + 1, c_int_at (a_block, 3))
 		end
 
 	live_block_count: INTEGER

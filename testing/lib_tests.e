@@ -616,6 +616,446 @@ feature -- Test: memory
 				+ " live against " + l_live.out, l_doc.live_block_count <= l_live)
 		end
 
+feature -- Test: worker
+
+	test_result_box
+			-- The box frees what it replaces and what it is told to discard, and
+			-- hands on what is taken.
+		local
+			l_box: TS_RESULT_BOX
+			l_doc: TS_DOCUMENT
+			l_ranges, l_folds: TS_LINE_RANGES
+			l_spans: TS_SPANS
+			l_pair: POINTER
+			l_live, l_position: INTEGER
+		do
+			l_doc := new_sample_document
+			create l_box.make
+			assert_false ("a new box has no results", l_box.has_results)
+			assert_false ("and no bracket answer", l_box.has_bracket)
+			assert_integers_equal ("nothing is wanted yet", 0, l_box.wanted)
+			l_box.set_wanted (3)
+			assert_integers_equal ("wanted", 3, l_box.wanted)
+
+			collect
+			l_live := blocks.live_block_count
+			put_results_of (l_doc, l_box, 1)
+			assert_integers_equal ("the box holds three blocks", l_live + 3, blocks.live_block_count)
+			assert_true ("results", l_box.has_results)
+			assert_integers_equal ("their version", 1, l_box.version)
+			assert_integers_equal ("one range: a new text is owed whole", 1, l_box.range_count)
+			assert_integers_equal ("19 spans", 19, l_box.span_count)
+			assert_integers_equal ("3 folds", 3, l_box.fold_count)
+
+			put_results_of (l_doc, l_box, 2)
+			assert_integers_equal ("results that were not taken are freed", l_live + 3, blocks.live_block_count)
+			assert_integers_equal ("the newer version", 2, l_box.version)
+
+			l_ranges := taken_ranges (l_box)
+			assert_false ("taken from", l_box.has_results)
+			assert_integers_equal ("the box forgot the ranges", 0, l_box.range_count)
+			l_spans := taken_spans (l_box)
+			l_folds := taken_folds (l_box)
+			assert_integers_equal ("taken blocks are the taker's", l_live + 3, blocks.live_block_count)
+			assert_integers_equal ("the range", 1, l_ranges.count)
+			assert_integers_equal ("from line 1", 1, l_ranges.first_line (1))
+			assert_integers_equal ("to the last", l_doc.line_count, l_ranges.last_line (1))
+			assert_integers_equal ("the spans", 19, l_spans.count)
+			assert_integers_equal ("the folds", 3, l_folds.count)
+
+				-- A bracket answer: a pair, or the answer that there is none.
+			l_position := l_doc.line_start (7) + 9
+			l_box.put_bracket (2, l_position, l_doc.bracket_pair_block (l_position))
+			assert_integers_equal ("the pair is a block", l_live + 4, blocks.live_block_count)
+			assert_true ("a bracket answer", l_box.has_bracket)
+			assert_integers_equal ("its version", 2, l_box.bracket_version)
+			assert_integers_equal ("its position", l_position, l_box.bracket_position)
+			l_box.put_bracket (2, 1, default_pointer)
+			assert_integers_equal ("an answer that was not taken is freed", l_live + 3, blocks.live_block_count)
+			assert_true ("no pair is an answer too", l_box.has_bracket)
+			assert_true ("it is the null pointer", l_box.take_bracket = default_pointer)
+			assert_false ("taken", l_box.has_bracket)
+			l_box.put_bracket (2, l_position, l_doc.bracket_pair_block (l_position))
+			l_pair := l_box.take_bracket
+			assert_true ("a pair", l_pair /= default_pointer)
+			if l_pair /= default_pointer then
+				assert_pair ("the round brackets", blocks.new_bracket_pair (l_pair), l_position, 1, l_position + 11, 1)
+			end
+			assert_integers_equal ("a taken pair is the taker's", l_live + 4, blocks.live_block_count)
+			blocks.free_block (l_pair)
+
+			put_results_of (l_doc, l_box, 3)
+			l_box.put_bracket (3, l_position, l_doc.bracket_pair_block (l_position))
+			assert_integers_equal ("four more blocks in the box", l_live + 7, blocks.live_block_count)
+			l_box.discard
+			assert_integers_equal ("discard frees them", l_live + 3, blocks.live_block_count)
+			assert_false ("no results after discard", l_box.has_results)
+			assert_false ("no bracket answer after discard", l_box.has_bracket)
+
+			assert_integers_equal ("no edit was refused", 0, l_box.rejected_version)
+			l_box.set_rejected (5)
+			l_box.set_rejected (3)
+			assert_integers_equal ("the newest refused version is kept", 5, l_box.rejected_version)
+		end
+
+	test_worker_step_by_step
+			-- A worker and its box on the test's own processor, so that every call
+			-- is done when it returns: what is answered, when, and for which lines.
+		local
+			l_box: TS_RESULT_BOX
+			l_worker: TS_WORKER
+			l_text: STRING_32
+			l_sample: TS_DOCUMENT
+			l_ranges: TS_LINE_RANGES
+			l_in_line_2, l_in_line_4, l_in_line_6, l_bracket, l_live: INTEGER
+			l_pair: POINTER
+		do
+			l_sample := new_sample_document
+				-- The A of "class A", the g of "greeting", a letter in the string, the round bracket.
+			l_in_line_2 := l_sample.line_start (2) + 6
+			l_in_line_4 := l_sample.line_start (4) + 1
+			l_in_line_6 := l_sample.line_start (6) + 14
+			l_bracket := l_sample.line_start (7) + 9
+			l_text := sample
+			create l_box.make
+			create l_worker.make ("eiffel", l_box)
+			assert_true ("language", l_worker.language.same_string ("eiffel"))
+
+				-- A whole text.
+			l_box.set_wanted (1)
+			l_worker.set_text (blocks.new_text_block (l_text), l_text.count, 1)
+			assert_false ("set_text computes no results", l_box.has_results)
+			l_worker.refresh
+			assert_integers_equal ("version 1 is answered", 1, l_worker.answered_version)
+			l_ranges := checked_answer ("a new text", l_box, 1, l_text)
+			assert_integers_equal ("owed whole: one range", 1, l_ranges.count)
+			assert_integers_equal ("from line 1", 1, l_ranges.first_line (1))
+			assert_integers_equal ("to the last", 10, l_ranges.last_line (1))
+
+				-- An edit before the first answer was applied: everything is still owed.
+			l_text.put ({CHARACTER_32} 'N', l_in_line_6)
+			l_box.set_wanted (2)
+			l_worker.edit (l_in_line_6, 1, blocks.new_text_block ({STRING_32} "N"), 1, 2)
+			assert_false ("edit computes no results", l_box.has_results)
+			l_worker.refresh
+			l_ranges := checked_answer ("an edit before anything was applied", l_box, 2, l_text)
+			assert_true ("the first line is still owed", l_ranges.has_line (1))
+			assert_true ("and the ninth", l_ranges.has_line (9))
+
+				-- `applied' for an older version forgets nothing.
+			l_worker.applied (1)
+			l_worker.refresh
+			l_ranges := checked_answer ("after a stale applied", l_box, 2, l_text)
+			assert_true ("everything is still owed", l_ranges.has_line (1) and l_ranges.has_line (9))
+			l_worker.applied (2)
+			l_worker.refresh
+			l_ranges := checked_answer ("after applied", l_box, 2, l_text)
+			assert_true ("nothing is owed", l_ranges.is_empty)
+
+				-- An edit names its own lines only.
+			l_text.put ({CHARACTER_32} 'n', l_in_line_6)
+			l_box.set_wanted (3)
+			l_worker.edit (l_in_line_6, 1, blocks.new_text_block ({STRING_32} "n"), 1, 3)
+			l_worker.refresh
+			l_ranges := checked_answer ("one edit", l_box, 3, l_text)
+			assert_true ("line 6 is owed", l_ranges.has_line (6))
+			assert_false ("line 2 is not", l_ranges.has_line (2))
+
+				-- The box says version 5 is on its way: the refresh for version 4 is skipped,
+				-- and the answer for version 5 has the lines of every edit not yet applied.
+			l_text.put ({CHARACTER_32} 'B', l_in_line_2)
+			l_box.set_wanted (5)
+			l_worker.edit (l_in_line_2, 1, blocks.new_text_block ({STRING_32} "B"), 1, 4)
+			l_worker.refresh
+			assert_false ("no results for a version nobody waits for", l_box.has_results)
+			assert_integers_equal ("3 is still the version answered", 3, l_worker.answered_version)
+			l_text.put ({CHARACTER_32} 'h', l_in_line_4)
+			l_worker.edit (l_in_line_4, 1, blocks.new_text_block ({STRING_32} "h"), 1, 5)
+			l_worker.refresh
+			l_ranges := checked_answer ("three edits, none applied", l_box, 5, l_text)
+			assert_true ("line 6 is still owed", l_ranges.has_line (6))
+			assert_true ("line 2 is owed", l_ranges.has_line (2))
+			assert_true ("line 4 is owed", l_ranges.has_line (4))
+			l_worker.applied (5)
+
+				-- Brackets.
+			l_worker.find_bracket (l_bracket, 4)
+			assert_false ("no answer for an older version", l_box.has_bracket)
+			l_worker.find_bracket (l_text.count + 2, 5)
+			assert_false ("no answer for a position outside the text", l_box.has_bracket)
+			l_worker.find_bracket (l_bracket, 5)
+			assert_true ("an answer", l_box.has_bracket)
+			assert_integers_equal ("its version", 5, l_box.bracket_version)
+			assert_integers_equal ("its position", l_bracket, l_box.bracket_position)
+			l_pair := l_box.take_bracket
+			assert_true ("a pair", l_pair /= default_pointer)
+			if l_pair /= default_pointer then
+				assert_pair ("the round brackets", blocks.new_bracket_pair (l_pair), l_bracket, 1, l_bracket + 11, 1)
+			end
+			blocks.free_block (l_pair)
+			l_worker.find_bracket (1, 5)
+			assert_true ("the answer that there is none", l_box.has_bracket)
+			assert_true ("no pair in a comment", l_box.take_bracket = default_pointer)
+
+				-- An edit whose range is not in the text: the worker is lost until it is
+				-- given the whole text again, and frees the blocks it is handed meanwhile.
+			collect
+			l_live := blocks.live_block_count
+			l_box.set_wanted (6)
+			l_worker.edit (l_text.count + 2, 0, blocks.new_text_block ({STRING_32} "x"), 1, 6)
+			assert_true ("lost", l_worker.is_lost)
+			assert_integers_equal ("the box knows which version", 6, l_box.rejected_version)
+			assert_integers_equal ("the block was freed", l_live, blocks.live_block_count)
+			assert_integers_equal ("the version moved on all the same", 6, l_worker.version)
+			l_worker.refresh
+			assert_false ("a lost worker answers nothing", l_box.has_results)
+			l_box.set_wanted (7)
+			l_worker.edit (1, 0, blocks.new_text_block ({STRING_32} "x"), 1, 7)
+			assert_integers_equal ("an edit to a lost worker is freed too", l_live, blocks.live_block_count)
+			l_worker.refresh
+			assert_false ("and still no answer", l_box.has_results)
+			l_worker.find_bracket (l_bracket, 7)
+			assert_false ("nor a bracket answer", l_box.has_bracket)
+
+			l_box.set_wanted (8)
+			l_worker.set_text (blocks.new_text_block (l_text), l_text.count, 8)
+			assert_false ("found again", l_worker.is_lost)
+			l_worker.refresh
+			l_ranges := checked_answer ("the whole text again", l_box, 8, l_text)
+			assert_integers_equal ("owed whole again", 1, l_ranges.count)
+		end
+
+	test_typing_cost
+			-- What one typed character costs the worker in a text of 10,000 lines: the
+			-- edit, and the results for it. Timed, and printed.
+		local
+			l_box: TS_RESULT_BOX
+			l_worker: TS_WORKER
+			l_text: STRING_32
+			l_block: POINTER
+			l_position, i: INTEGER
+			l_started, l_elapsed, l_worst, l_total: INTEGER_64
+		do
+			l_text := large_text (10_000)
+			l_position := comment_position (l_text, 800)
+			create l_box.make
+			create l_worker.make ("eiffel", l_box)
+			l_box.set_wanted (1)
+			l_started := c_now_microseconds
+			l_worker.set_text (blocks.new_text_block (l_text), l_text.count, 1)
+			l_worker.refresh
+			l_elapsed := c_now_microseconds - l_started
+			assert_true ("results for the whole text", l_box.has_results and then l_box.span_count > 10_000)
+			print ("        10,000 lines, whole text and its results: " + (l_elapsed // 1000).out + " ms, "
+				+ l_box.span_count.out + " spans%N")
+			l_worker.applied (1)
+			from
+				i := 1
+			until
+				i > 20
+			loop
+				l_box.set_wanted (i + 1)
+				l_block := blocks.new_text_block ({STRING_32} "x")
+				l_started := c_now_microseconds
+				l_worker.edit (l_position, 0, l_block, 1, i + 1)
+				l_worker.refresh
+				l_elapsed := c_now_microseconds - l_started
+				l_worst := l_worst.max (l_elapsed)
+				l_total := l_total + l_elapsed
+				assert_true ("results for character " + i.out, l_box.has_results and then l_box.version = i + 1)
+				assert_true ("one line is owed for character " + i.out,
+					l_box.range_count = 1 and l_box.span_count >= 1 and l_box.span_count < 20)
+				l_worker.applied (i + 1)
+				i := i + 1
+			end
+			print ("        one typed character in 10,000 lines, edit and results: mean " + (l_total // 20).out
+				+ ", worst " + l_worst.out + " microseconds%N")
+			assert_true ("a typed character costs the worker under 5 ms on average: " + (l_total // 20).out
+				+ " microseconds", l_total // 20 < 5_000)
+		end
+
+	test_client_never_waits
+			-- With the worker on a processor of its own, the calls that tell it of a
+			-- change come back at once while it parses a large text, and the results
+			-- that arrive later are the ones a fresh parse gives.
+		local
+			l_client: TS_WORKER_CLIENT
+			l_notifier: separate TS_TEST_NOTIFIER
+			l_text: STRING_32
+			l_fresh: TS_DOCUMENT
+			l_started, l_begun, l_elapsed, l_set_text, l_worst, l_waited: INTEGER_64
+			l_first, l_far, l_near, l_do, l_made, i: INTEGER
+			l_still_at_work: BOOLEAN
+			l_garbage: STRING_32
+		do
+			l_text := large_text (Large_lines)
+			l_first := comment_position (l_text, 1)
+			create l_notifier
+			create l_client.make ("eiffel", l_notifier)
+			assert_true ("language", l_client.language.same_string ("eiffel"))
+
+				-- The whole text, and ten typed characters straight after it.
+			l_started := c_now_microseconds
+			l_client.set_text (l_text)
+			l_set_text := c_now_microseconds - l_started
+			from
+				i := 1
+			until
+				i > 10
+			loop
+				l_started := c_now_microseconds
+				l_client.edit (l_first, 0, {STRING_32} "x")
+				l_elapsed := c_now_microseconds - l_started
+				l_worst := l_worst.max (l_elapsed)
+				i := i + 1
+			end
+			l_client.take
+			l_still_at_work := not l_client.has_result
+			l_text.insert_string ({STRING_32} "xxxxxxxxxx", l_first)
+			assert_integers_equal ("eleven versions", 11, l_client.version)
+			assert_integers_equal ("the count follows the edits", l_text.count, l_client.count)
+			l_waited := wait_for_result (l_client)
+			print ("        " + Large_lines.out + " lines: set_text returned in " + l_set_text.out
+				+ " microseconds, the slowest of ten edits in " + l_worst.out
+				+ " microseconds, results came " + (l_waited // 1000).out + " ms later%N")
+			assert_true ("the worker was still at work when the ten edits had returned", l_still_at_work)
+			assert_true ("no edit waited: the slowest took " + l_worst.out + " microseconds", l_worst < 5_000)
+			assert_true ("the results came", l_waited >= 0)
+			assert_false ("no limit was hit", l_client.was_limited)
+			assert_false ("no edit was refused", l_client.needs_text)
+			create l_fresh.make ("eiffel")
+			l_fresh.set_text (l_text)
+			assert_integers_equal ("all the text is owed: one range", 1, l_client.ranges.count)
+			assert_answer_fresh ("the large text", l_client.ranges, l_client.spans, l_client.folds, l_fresh)
+			assert_true ("the notifier was told", wait_for_notifier (l_notifier))
+			l_client.confirm_applied
+
+				-- Garbage made on this side while the worker parses the whole text again:
+				-- the collections it causes must not wait for the parse.
+			l_client.set_text (l_text)
+			l_worst := 0
+			from
+				l_begun := c_now_microseconds
+				l_client.take
+			until
+				l_client.has_result or c_now_microseconds - l_begun > Patience
+			loop
+				l_started := c_now_microseconds
+				create l_garbage.make_filled ({CHARACTER_32} 'a', 10_000)
+				l_elapsed := c_now_microseconds - l_started
+				l_worst := l_worst.max (l_elapsed)
+				l_made := l_made + 1
+				l_client.take
+			end
+			print ("        " + l_made.out + " strings of 10,000 characters made during a parse of "
+				+ ((c_now_microseconds - l_begun) // 1000).out + " ms: the slowest took " + l_worst.out + " microseconds%N")
+			assert_true ("the results of the second set_text came", l_client.has_result)
+			assert_true ("garbage was made during the parse", l_made >= 100)
+			assert_true ("no allocation waited for the parse: the slowest took " + l_worst.out + " microseconds",
+				l_worst < 5_000)
+			l_client.confirm_applied
+
+				-- Two edits in a row: only the answer for the newer one is kept.
+			l_client.edit (l_first, 0, {STRING_32} "y")
+			l_client.edit (l_first, 0, {STRING_32} "y")
+			l_text.insert_string ({STRING_32} "yy", l_first)
+			assert_true ("results after two edits", wait_for_result (l_client) >= 0)
+			l_fresh.set_text (l_text)
+			assert_true ("the edited line is owed", l_client.ranges.has_line (comment_line (1)))
+			assert_false ("a line far away is not", l_client.ranges.has_line (comment_line (5000)))
+			assert_answer_fresh ("two edits", l_client.ranges, l_client.spans, l_client.folds, l_fresh)
+
+				-- That answer was not confirmed: its lines come again with the next one.
+			l_far := comment_position (l_text, 5000)
+			l_client.edit (l_far, 0, {STRING_32} "z")
+			l_text.insert_string ({STRING_32} "z", l_far)
+			assert_true ("results after an edit far away", wait_for_result (l_client) >= 0)
+			l_fresh.set_text (l_text)
+			assert_true ("the line of the answer not confirmed is owed again", l_client.ranges.has_line (comment_line (1)))
+			assert_true ("with the new one", l_client.ranges.has_line (comment_line (5000)))
+			assert_answer_fresh ("an edit far away", l_client.ranges, l_client.spans, l_client.folds, l_fresh)
+			l_client.confirm_applied
+
+				-- Confirmed lines do not come again.
+			l_near := comment_position (l_text, 100)
+			l_client.edit (l_near, 0, {STRING_32} "w")
+			l_text.insert_string ({STRING_32} "w", l_near)
+			assert_true ("results after a third place", wait_for_result (l_client) >= 0)
+			l_fresh.set_text (l_text)
+			assert_true ("its line is owed", l_client.ranges.has_line (comment_line (100)))
+			assert_false ("the confirmed lines are not", l_client.ranges.has_line (comment_line (1))
+				or l_client.ranges.has_line (comment_line (5000)))
+			assert_answer_fresh ("a third place", l_client.ranges, l_client.spans, l_client.folds, l_fresh)
+			l_client.confirm_applied
+
+				-- Brackets: the `do' of the first feature, on line 5.
+			l_do := l_fresh.line_start (5) + 2
+			l_client.ask_bracket (l_do)
+			assert_true ("a bracket answer came", wait_for_bracket (l_client))
+			if attached l_fresh.bracket_at (l_do) as al_pair then
+				assert_pair ("do and its end", l_client.bracket, al_pair.open_start, al_pair.open_length,
+					al_pair.close_start, al_pair.close_length)
+			else
+				assert_true ("the fresh document has the pair", False)
+			end
+			l_client.ask_bracket (l_first)
+			assert_true ("an answer for a place in a comment came", wait_for_bracket (l_client))
+			assert_true ("it is that there is no pair", l_client.bracket = Void)
+
+				-- A bracket answer for a text that has changed since is dropped.
+			bracket_seen := False
+			l_client.ask_bracket (l_do)
+			l_client.edit (l_first, 0, {STRING_32} "v")
+			l_text.insert_string ({STRING_32} "v", l_first)
+			assert_true ("results after the edit", wait_for_result (l_client) >= 0)
+			assert_false ("the bracket answer for the older text was dropped", bracket_seen or l_client.has_bracket)
+			l_client.confirm_applied
+
+				-- An edit whose range is not in the text cannot be told: the count kept
+				-- here is the text's, and the precondition of `edit' holds it to that.
+			assert_integers_equal ("the count is still the text's", l_text.count, l_client.count)
+			assert_false ("the worker was never lost", l_client.needs_text)
+		end
+
+	test_worker_converges
+			-- Random edits to each fixture, some answered before the next one and
+			-- some not: what the client was told to show is, after every answer it
+			-- applied, what a fresh parse shows.
+		do
+			converge ("eiffel", "sample.e")
+			converge ("c", "sample.c")
+			converge ("json", "sample.json")
+			converge ("xml", "sample.ecf")
+		end
+
+	test_worker_gives_memory_back
+			-- A client that is no longer used gives back the memory of its worker,
+			-- its box and whatever the box still held, once they are collected.
+		local
+			l_live, i: INTEGER
+		do
+			l_live := settled_block_count
+			from
+				i := 1
+			until
+				i > 5
+			loop
+				use_and_drop_client
+				i := i + 1
+			end
+			from
+				i := 1
+			until
+				i > 400 or else blocks.live_block_count <= l_live
+			loop
+				collect
+				sleep_milliseconds (5)
+				i := i + 1
+			end
+			assert_true ("nothing is left of five clients: " + blocks.live_block_count.out + " live against " + l_live.out,
+				blocks.live_block_count <= l_live)
+		end
+
 feature {NONE} -- Samples
 
 	sample: STRING_32
@@ -798,6 +1238,596 @@ feature {NONE} -- Checks
 			l_doc.set_text (sample)
 			l_total := l_total + l_doc.spans (1, 3).count
 			assert_true ("results were made", l_total > 20)
+		end
+
+feature {NONE} -- Worker: blocks and answers
+
+	blocks: TS_BLOCKS
+			-- Something to make, free and count blocks with.
+		do
+			create Result
+		end
+
+	put_results_of (a_doc: TS_DOCUMENT; a_box: TS_RESULT_BOX; a_version: INTEGER)
+			-- Put the lines `a_doc' owes, their spans and its folds in `a_box', as the
+			-- results for `a_version': three blocks, when none of them is empty.
+		local
+			l_ranges, l_folds: TS_LINE_RANGES
+			l_spans: TS_SPANS
+			l_range_count, l_span_count, l_fold_count: INTEGER
+		do
+			l_ranges := a_doc.changed_lines
+			l_spans := a_doc.spans_of (l_ranges)
+			l_folds := a_doc.folds
+			l_range_count := l_ranges.count
+			l_span_count := l_spans.count
+			l_fold_count := l_folds.count
+			a_box.put_results (a_version, l_ranges.take_block, l_range_count, l_spans.take_block, l_span_count,
+				l_folds.take_block, l_fold_count, False)
+		end
+
+	taken_ranges (a_box: TS_RESULT_BOX): TS_LINE_RANGES
+			-- The line ranges of `a_box', taken from it.
+		local
+			l_count: INTEGER
+		do
+			l_count := a_box.range_count
+			create Result.make_from_block (a_box.take_ranges, l_count)
+		end
+
+	taken_spans (a_box: TS_RESULT_BOX): TS_SPANS
+			-- The spans of `a_box', taken from it.
+		local
+			l_count: INTEGER
+		do
+			l_count := a_box.span_count
+			create Result.make_from_block (a_box.take_spans, l_count)
+		end
+
+	taken_folds (a_box: TS_RESULT_BOX): TS_LINE_RANGES
+			-- The folds of `a_box', taken from it.
+		local
+			l_count: INTEGER
+		do
+			l_count := a_box.fold_count
+			create Result.make_from_block (a_box.take_folds, l_count)
+		end
+
+	checked_answer (a_tag: STRING; a_box: TS_RESULT_BOX; a_version: INTEGER; a_text: STRING_32): TS_LINE_RANGES
+			-- The line ranges of the results in `a_box', which are taken from it, after
+			-- checking that they are for `a_version' and are what a fresh Eiffel
+			-- document of `a_text' gives.
+		local
+			l_fresh: TS_DOCUMENT
+		do
+			assert_true (a_tag + ": results", a_box.has_results)
+			assert_integers_equal (a_tag + ": version", a_version, a_box.version)
+			assert_false (a_tag + ": no limit was hit", a_box.was_limited)
+			Result := taken_ranges (a_box)
+			create l_fresh.make ("eiffel")
+			l_fresh.set_text (a_text)
+			assert_answer_fresh (a_tag, Result, taken_spans (a_box), taken_folds (a_box), l_fresh)
+			assert_false (a_tag + ": taken", a_box.has_results)
+		end
+
+	assert_answer_fresh (a_tag: STRING; a_ranges: TS_LINE_RANGES; a_spans: TS_SPANS; a_folds: TS_LINE_RANGES; a_fresh: TS_DOCUMENT)
+			-- `a_ranges' are lines of the text of `a_fresh', in order; `a_spans' are the
+			-- spans `a_fresh' has on those lines, in order; `a_folds' are its folds.
+		local
+			l_part: TS_SPANS
+			l_folds: TS_LINE_RANGES
+			i, j, k, l_bad, l_last: INTEGER
+		do
+			from
+				i := 1
+			until
+				i > a_ranges.count
+			loop
+				assert_true (a_tag + ": range " + i.out + " is in the text, after the one before",
+					l_last < a_ranges.first_line (i) and a_ranges.first_line (i) <= a_ranges.last_line (i)
+					and a_ranges.last_line (i) <= a_fresh.line_count)
+				l_last := a_ranges.last_line (i)
+				l_part := a_fresh.spans (a_ranges.first_line (i), l_last)
+				from
+					j := 1
+				until
+					j > l_part.count
+				loop
+					k := k + 1
+					if
+						l_bad = 0 and then (k > a_spans.count or else not (a_spans.line (k) = l_part.line (j)
+						and a_spans.column (k) = l_part.column (j) and a_spans.length (k) = l_part.length (j)
+						and a_spans.style (k) = l_part.style (j)))
+					then
+						l_bad := k
+					end
+					j := j + 1
+				end
+				i := i + 1
+			end
+			assert_integers_equal (a_tag + ": the number of spans", k, a_spans.count)
+			assert_true (a_tag + ": span " + l_bad.out + " is not what a fresh parse gives", l_bad = 0)
+			l_folds := a_fresh.folds
+			assert_integers_equal (a_tag + ": the number of folds", l_folds.count, a_folds.count)
+			from
+				i := 1
+			until
+				i > l_folds.count
+			loop
+				assert_true (a_tag + ": fold " + i.out,
+					l_folds.first_line (i) = a_folds.first_line (i) and l_folds.last_line (i) = a_folds.last_line (i))
+				i := i + 1
+			end
+		end
+
+feature {NONE} -- Worker: a large text
+
+	Large_lines: INTEGER = 40_000
+			-- The number of lines of the text `test_client_never_waits' uses.
+
+	large_text (a_lines: INTEGER): STRING_32
+			-- An Eiffel class of about `a_lines' lines: after two lines of heading,
+			-- features of six lines each, with a comment and a string in each.
+		require
+			some_features: a_lines >= 6
+		local
+			i, n: INTEGER
+		do
+			n := a_lines // 6
+			create Result.make (n * 150)
+			Result.append ({STRING_32} "class LARGE%Nfeature%N")
+			from
+				i := 1
+			until
+				i > n
+			loop
+				Result.append_string_general ("%Tf" + i.out + ": INTEGER%N")
+				Result.append_string_general ("%T%T%T-- Number " + i.out + ", with a comment long enough to count for something.%N")
+				Result.append_string_general ("%T%Tdo%N")
+				Result.append_string_general ("%T%T%TResult := " + i.out + " + (%"text " + i.out + "%").count%N")
+				Result.append_string_general ("%T%Tend%N")
+				Result.append_string_general ("%N")
+				i := i + 1
+			end
+			Result.append ({STRING_32} "end%N")
+		end
+
+	comment_position (a_text: STRING_32; a_feature: INTEGER): INTEGER
+			-- The position of the word "Number" in the comment of feature `a_feature'
+			-- of `a_text', which is a `large_text'.
+		do
+			Result := a_text.substring_index ({STRING_32} "Number " + a_feature.out + ",", 1)
+		ensure
+			found: Result > 0
+		end
+
+	comment_line (a_feature: INTEGER): INTEGER
+			-- The line of the comment of feature `a_feature' of a `large_text'.
+		do
+			Result := 4 + (a_feature - 1) * 6
+		end
+
+feature {NONE} -- Worker: time
+
+	c_now_microseconds: INTEGER_64
+			-- The time of day in microseconds, for measuring.
+		external
+			"C inline use <time.h>"
+		alias
+			"[
+				struct timespec l_now;
+				timespec_get (&l_now, TIME_UTC);
+				return (EIF_INTEGER_64) l_now.tv_sec * 1000000 + (EIF_INTEGER_64) (l_now.tv_nsec / 1000);
+			]"
+		end
+
+	sleep_milliseconds (a_count: INTEGER)
+			-- Let `a_count' milliseconds pass.
+		do
+			(create {EXECUTION_ENVIRONMENT}).sleep (a_count.to_integer_64 * 1_000_000)
+		end
+
+	Patience: INTEGER_64 = 60_000_000
+			-- How long a test waits for the worker before it gives up, in microseconds.
+
+	bracket_seen: BOOLEAN
+			-- Did a `take' inside `wait_for_result' bring a bracket answer?
+
+	wait_for_result (a_client: TS_WORKER_CLIENT): INTEGER_64
+			-- Call `take' on `a_client' until it has a result. The microseconds that
+			-- took; -1 when `Patience' ran out first.
+		local
+			l_started: INTEGER_64
+			l_polls: INTEGER
+		do
+			from
+				l_started := c_now_microseconds
+				a_client.take
+			until
+				a_client.has_result or c_now_microseconds - l_started > Patience
+			loop
+				if a_client.has_bracket then
+					bracket_seen := True
+				end
+				l_polls := l_polls + 1
+				if l_polls > 200 then
+					sleep_milliseconds (1)
+				end
+				a_client.take
+			end
+			if a_client.has_bracket then
+				bracket_seen := True
+			end
+			if a_client.has_result then
+				Result := c_now_microseconds - l_started
+			else
+				Result := -1
+			end
+		end
+
+	wait_for_bracket (a_client: TS_WORKER_CLIENT): BOOLEAN
+			-- Call `take' on `a_client' until it has a bracket answer. Did one come
+			-- before `Patience' ran out?
+		local
+			l_started: INTEGER_64
+			l_polls: INTEGER
+		do
+			from
+				l_started := c_now_microseconds
+				a_client.take
+			until
+				a_client.has_bracket or c_now_microseconds - l_started > Patience
+			loop
+				l_polls := l_polls + 1
+				if l_polls > 200 then
+					sleep_milliseconds (1)
+				end
+				a_client.take
+			end
+			Result := a_client.has_bracket
+		end
+
+	wait_for_notifier (a_notifier: separate TS_TEST_NOTIFIER): BOOLEAN
+			-- Was `a_notifier' told at least once, now or before `Patience' ran out?
+		local
+			l_started: INTEGER_64
+		do
+			from
+				l_started := c_now_microseconds
+			until
+				a_notifier.count > 0 or c_now_microseconds - l_started > Patience
+			loop
+				sleep_milliseconds (1)
+			end
+			Result := a_notifier.count > 0
+		end
+
+feature {NONE} -- Worker: random edits
+
+	random_state: NATURAL_32
+			-- Where the sequence of `random' stands.
+
+	random (a_bound: INTEGER): INTEGER
+			-- The next number of a fixed sequence, from 0 to `a_bound' - 1.
+		require
+			bound_positive: a_bound > 0
+		do
+			random_state := random_state * 1664525 + 1013904223
+			Result := ((random_state |>> 8) \\ a_bound.to_natural_32).to_integer_32
+		ensure
+			in_bound: 0 <= Result and Result < a_bound
+		end
+
+	converge (a_language, a_fixture: STRING)
+			-- Edit the text of `a_fixture' at random through a client, the first half
+			-- of the edits waiting for each answer and the second half taking only
+			-- what is there, at once or a millisecond later, and check what is shown
+			-- after every answer applied.
+		local
+			l_client: TS_WORKER_CLIENT
+			l_original, l_text, l_inserted: STRING_32
+			l_fresh: TS_DOCUMENT
+			l_shown: ARRAYED_LIST [STRING]
+			l_seed, i, l_start, l_removed, l_length, l_from, l_first, l_old_last: INTEGER
+			l_applied, l_late: INTEGER
+			l_pending: BOOLEAN
+			l_tag: STRING
+		do
+			l_original := fixture (a_fixture)
+			create l_fresh.make (a_language)
+			from
+				l_seed := 1
+			until
+				l_seed > 2
+			loop
+				random_state := (l_seed * 7919).to_natural_32
+				l_text := l_original.twin
+				create l_client.make (a_language, Void)
+				l_client.set_text (l_text)
+				l_shown := stale_lines (line_of (l_text, l_text.count + 1))
+				l_pending := True
+				from
+					i := 1
+				until
+					i > 60
+				loop
+					l_tag := a_fixture + ", seed " + l_seed.out + ", edit " + i.out
+					l_start := 1 + random (l_text.count + 1)
+					l_removed := random ((l_text.count - l_start + 1).min (12) + 1)
+					if random (8) = 0 then
+						l_length := random (200)
+					else
+						l_length := random (13)
+					end
+					l_from := 1 + random (l_original.count)
+					l_inserted := l_original.substring (l_from, (l_from + l_length - 1).min (l_original.count))
+					l_first := line_of (l_text, l_start)
+					l_old_last := line_of (l_text, l_start + l_removed)
+					l_text.replace_substring (l_inserted, l_start, l_start + l_removed - 1)
+					l_shown := shown_after_edit (l_shown, l_first, l_old_last, line_of (l_text, l_start + l_inserted.count))
+					l_client.edit (l_start, l_removed, l_inserted)
+					l_pending := True
+					if i <= 30 then
+						assert_true (l_tag + ": an answer came", wait_for_result (l_client) >= 0)
+					else
+						if random (2) = 0 then
+							sleep_milliseconds (1)
+						end
+						l_client.take
+						if not l_client.has_result then
+							l_late := l_late + 1
+						end
+					end
+					if l_client.has_result then
+						apply_and_check (l_tag, l_client, l_shown, l_text, l_fresh, random (4) /= 0)
+						l_applied := l_applied + 1
+						l_pending := False
+					end
+					i := i + 1
+				end
+				l_tag := a_fixture + ", seed " + l_seed.out + ", at the end"
+				if l_pending then
+					assert_true (l_tag + ": an answer came", wait_for_result (l_client) >= 0)
+					apply_and_check (l_tag, l_client, l_shown, l_text, l_fresh, True)
+					l_applied := l_applied + 1
+				end
+				assert_integers_equal (l_tag + ": the count", l_text.count, l_client.count)
+				assert_false (l_tag + ": no edit was refused", l_client.needs_text)
+				l_seed := l_seed + 1
+			end
+			print ("        " + a_fixture + ": 120 edits, " + l_applied.out + " answers applied, "
+				+ l_late.out + " edits went on without theirs%N")
+		end
+
+	apply_and_check (a_tag: STRING; a_client: TS_WORKER_CLIENT; a_shown: ARRAYED_LIST [STRING]; a_text: STRING_32;
+			a_fresh: TS_DOCUMENT; a_confirm: BOOLEAN)
+			-- Show the result `a_client' has in `a_shown', confirm it when `a_confirm',
+			-- and check that `a_shown' is now what a fresh parse of `a_text' shows.
+		require
+			has_result: a_client.has_result
+		local
+			l_ranges: TS_LINE_RANGES
+			l_spans: TS_SPANS
+			l_expected: ARRAYED_LIST [STRING]
+			l_folds: TS_LINE_RANGES
+			i, l_line, l_bad: INTEGER
+		do
+			l_ranges := a_client.ranges
+			l_spans := a_client.spans
+			from
+				i := 1
+			until
+				i > l_ranges.count
+			loop
+				assert_true (a_tag + ": range " + i.out + " is in the text",
+					1 <= l_ranges.first_line (i) and l_ranges.last_line (i) <= a_shown.count)
+				from
+					l_line := l_ranges.first_line (i)
+				until
+					l_line > l_ranges.last_line (i)
+				loop
+					a_shown.put_i_th (create {STRING}.make_empty, l_line)
+					l_line := l_line + 1
+				end
+				i := i + 1
+			end
+			add_spans (a_tag, a_shown, l_spans)
+			if a_confirm then
+				a_client.confirm_applied
+			end
+
+			a_fresh.set_text (a_text)
+			l_expected := plain_lines (a_fresh.line_count)
+			add_spans (a_tag + ", fresh", l_expected, a_fresh.spans (1, a_fresh.line_count))
+			assert_integers_equal (a_tag + ": the number of lines shown", l_expected.count, a_shown.count)
+			from
+				i := 1
+			until
+				i > l_expected.count
+			loop
+				if l_bad = 0 and then not a_shown.i_th (i).same_string (l_expected.i_th (i)) then
+					l_bad := i
+				end
+				i := i + 1
+			end
+			if l_bad > 0 then
+				assert_true (a_tag + ": line " + l_bad.out + " shows " + a_shown.i_th (l_bad) + ", a fresh parse "
+					+ l_expected.i_th (l_bad), False)
+			end
+			l_folds := a_fresh.folds
+			assert_integers_equal (a_tag + ": the number of folds", l_folds.count, a_client.folds.count)
+			from
+				i := 1
+			until
+				i > l_folds.count
+			loop
+				assert_true (a_tag + ": fold " + i.out, l_folds.first_line (i) = a_client.folds.first_line (i)
+					and l_folds.last_line (i) = a_client.folds.last_line (i))
+				i := i + 1
+			end
+		end
+
+	line_of (a_text: STRING_32; a_position: INTEGER): INTEGER
+			-- The line of `a_position' in `a_text'; `a_text'.count + 1 is on the last line.
+		require
+			position_in_text: 1 <= a_position and a_position <= a_text.count + 1
+		local
+			i: INTEGER
+		do
+			from
+				Result := 1
+				i := 1
+			until
+				i >= a_position
+			loop
+				if a_text.item (i) = {CHARACTER_32} '%N' then
+					Result := Result + 1
+				end
+				i := i + 1
+			end
+		end
+
+	Stale: STRING = "?"
+			-- What a line shows in the model when its spans are out of date.
+
+	stale_lines (a_count: INTEGER): ARRAYED_LIST [STRING]
+			-- `a_count' lines, all out of date.
+		local
+			i: INTEGER
+		do
+			create Result.make (a_count)
+			from
+				i := 1
+			until
+				i > a_count
+			loop
+				Result.extend (Stale.twin)
+				i := i + 1
+			end
+		end
+
+	plain_lines (a_count: INTEGER): ARRAYED_LIST [STRING]
+			-- `a_count' lines with no span.
+		local
+			i: INTEGER
+		do
+			create Result.make (a_count)
+			from
+				i := 1
+			until
+				i > a_count
+			loop
+				Result.extend (create {STRING}.make_empty)
+				i := i + 1
+			end
+		end
+
+	shown_after_edit (a_shown: ARRAYED_LIST [STRING]; a_first, an_old_last, a_new_last: INTEGER): ARRAYED_LIST [STRING]
+			-- `a_shown' after an edit that put lines `a_first' to `a_new_last' in place
+			-- of lines `a_first' to `an_old_last': those are out of date, and the lines
+			-- after them keep what they show.
+		require
+			lines_in_order: 1 <= a_first and a_first <= an_old_last and an_old_last <= a_shown.count
+			new_lines_in_order: a_first <= a_new_last
+		local
+			i: INTEGER
+		do
+			create Result.make (a_shown.count + a_new_last - an_old_last)
+			from
+				i := 1
+			until
+				i >= a_first
+			loop
+				Result.extend (a_shown.i_th (i))
+				i := i + 1
+			end
+			from
+				i := a_first
+			until
+				i > a_new_last
+			loop
+				Result.extend (Stale.twin)
+				i := i + 1
+			end
+			from
+				i := an_old_last + 1
+			until
+				i > a_shown.count
+			loop
+				Result.extend (a_shown.i_th (i))
+				i := i + 1
+			end
+		ensure
+			count_set: Result.count = a_shown.count + a_new_last - an_old_last
+		end
+
+	add_spans (a_tag: STRING; a_lines: ARRAYED_LIST [STRING]; a_spans: TS_SPANS)
+			-- Write each span of `a_spans' at the end of its line in `a_lines'.
+		local
+			i: INTEGER
+		do
+			from
+				i := 1
+			until
+				i > a_spans.count
+			loop
+				assert_true (a_tag + ": span " + i.out + " is on a line of the text",
+					1 <= a_spans.line (i) and a_spans.line (i) <= a_lines.count)
+				a_lines.i_th (a_spans.line (i)).append (a_spans.column (i).out + ":" + a_spans.length (i).out + ":"
+					+ a_spans.style (i).out + ";")
+				i := i + 1
+			end
+		end
+
+feature {NONE} -- Worker: memory
+
+	collect
+			-- Collect all the garbage there is.
+		local
+			l_memory: MEMORY
+		do
+			create l_memory
+			l_memory.full_collect
+		end
+
+	settled_block_count: INTEGER
+			-- The count of live blocks once collections no longer bring it down.
+		local
+			l_same, i: INTEGER
+		do
+			from
+				collect
+				Result := blocks.live_block_count
+				i := 1
+			until
+				l_same >= 5 or i > 400
+			loop
+				sleep_milliseconds (5)
+				collect
+				if blocks.live_block_count = Result then
+					l_same := l_same + 1
+				else
+					l_same := 0
+					Result := blocks.live_block_count
+				end
+				i := i + 1
+			end
+		end
+
+	use_and_drop_client
+			-- Make a client, get an answer from it, leave more answers waiting in its
+			-- box, and let go of it.
+		local
+			l_client: TS_WORKER_CLIENT
+			l_text: STRING_32
+		do
+			l_text := sample
+			create l_client.make ("eiffel", Void)
+			l_client.set_text (l_text)
+			assert_true ("an answer came", wait_for_result (l_client) >= 0)
+			assert_integers_equal ("19 spans", 19, l_client.spans.count)
+			l_client.ask_bracket (l_text.count - 3)
+			l_client.edit (1, 0, {STRING_32} "-- More.%N")
 		end
 
 end

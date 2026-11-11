@@ -4,7 +4,7 @@ Tree-sitter for Eiffel: incremental parsing and syntax highlighting, with the ru
 
 It wraps [tree-sitter](https://github.com/tree-sitter/tree-sitter), a C library that parses source code into a syntax tree and re-parses only what an edit changed. It was written for the code editor of [simple_gui](https://github.com/simple-eiffel/simple_gui), and has no dependency on it. Part of the [Simple Eiffel](https://github.com/simple-eiffel) ecosystem.
 
-> **Status: first version, not yet released.** The C wrapper and the Eiffel classes below are here and tested on macOS. Windows and Linux runs, the background worker and the adapter for simple_gui's editor are still to come. The Eiffel grammar is patched for Simple Eiffel's own source; see "Limits" for what it still does not parse.
+> **Status: first version, not yet released.** The C wrapper and the Eiffel classes below are here and tested on macOS. The background worker is here too, tested on macOS. Windows and Linux runs and the adapter for simple_gui's editor are still to come. The Eiffel grammar is patched for Simple Eiffel's own source; see "Limits" for what it still does not parse.
 
 ## What it gives
 
@@ -59,8 +59,40 @@ end
 | `TS_QUERY` | A query of your own, with the message and position of its error when it has one. |
 | `TS_CURSOR` | A walk over the tree. It is valid until the document changes. |
 | `TS_BLOCKS` | Text copied into a C block, for handing a text from one thread to the document's thread. |
+| `TS_WORKER_CLIENT` | A text parsed in the background: the class to use from an editor. See "Parsing in the background". |
+| `TS_WORKER`, `TS_RESULT_BOX` | The two halves behind the client: a document on a processor of its own, and the place its answers wait. |
+| `TS_NOTIFIER` | Inherit it to be told when an answer is waiting. |
 
 A document belongs to one thread at a time. Different documents may be used on different threads at once.
+
+## Parsing in the background
+
+A parse of a large text takes long enough to feel: 80 ms for 40,000 lines on the machine this was written on. `TS_WORKER_CLIENT` keeps the document on a SCOOP processor of its own, so the processor that owns the text never waits for it.
+
+```eiffel
+	-- Once.
+create client.make ("eiffel", Void)
+client.set_text (text)
+
+	-- At every change of the text: this returns at once.
+client.edit (l_start, l_removed, l_inserted)
+
+	-- Later, from a timer or when the notifier was told.
+client.take
+if client.has_result then
+		-- Recolor the lines of client.ranges from client.spans; client.folds are the folds.
+	client.confirm_applied
+end
+```
+
+- **Every change must be told,** in order, with `set_text` or `edit`. Positions are those of `TS_DOCUMENT`.
+- **A result is for the text as it is now, or it is dropped.** `take` frees a result that was made for an older text. Nothing is lost by that: a line stays owed until `confirm_applied` says it is shown, and the next result names it again.
+- **`ranges` are all the lines to recolor,** and `spans` are the spans of those lines only. A line of `ranges` with no span is plain.
+- **Bracket pairs:** `ask_bracket (a_position)`, then `has_bracket` and `bracket` after a later `take`.
+- **To be told instead of asking:** pass `make` an object of a class that inherits `TS_NOTIFIER`, created `separate`. Its `notify` runs on its own processor after each answer.
+- **Your system must be compiled for SCOOP** (`<concurrency support="scoop"/>`) for the worker to run beside you. Without it a separate call is an ordinary call, and each change is parsed before its call returns; that way of building is not tested here.
+- **Cost, measured on macOS with 40,000 lines:** `set_text` returns in 0.3 ms and `edit` in under 0.01 ms; the results of the whole text come 80 ms later. The worker's own work for one typed character in 10,000 lines is 3.7 ms.
+- **Collections do not wait for a parse.** The C calls the worker makes are marked `blocking`, so EiffelStudio's collector does not wait for them. Without the mark, an allocation on the editor's processor waited up to 30 ms on that text.
 
 ## Building
 
