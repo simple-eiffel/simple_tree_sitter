@@ -4,7 +4,7 @@ Tree-sitter for Eiffel: incremental parsing and syntax highlighting, with the ru
 
 It wraps [tree-sitter](https://github.com/tree-sitter/tree-sitter), a C library that parses source code into a syntax tree and re-parses only what an edit changed. It was written for the code editor of [simple_gui](https://github.com/simple-eiffel/simple_gui), and has no dependency on it. Part of the [Simple Eiffel](https://github.com/simple-eiffel) ecosystem.
 
-> **Status: first version, not yet released.** The C wrapper and the Eiffel classes below are here and tested on macOS. Windows and Linux runs, the background worker and the adapter for simple_gui's editor are still to come. The Eiffel grammar is patched for Simple Eiffel's own source; see "Limits" for what it still does not parse.
+> **Status: first version, not yet released.** The C wrapper and the Eiffel classes below are here and tested on macOS, Windows (MSVC) and Linux. The background worker and the adapter for simple_gui's editor are still to come. The Eiffel grammar is patched for Simple Eiffel's own source; see "Limits" for what it still does not parse.
 
 ## What it gives
 
