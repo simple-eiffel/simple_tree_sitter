@@ -5,6 +5,7 @@
 		<root all_classes="true"/>
 		<file_rule>
 			<exclude>/EIFGENs$</exclude>
+			<exclude>/fixtures$</exclude>
 			<exclude>/\..*$</exclude>
 		</file_rule>
 		<option warning="warning">

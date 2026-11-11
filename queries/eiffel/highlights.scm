@@ -1,5 +1,6 @@
 ; Eiffel highlights for simple_tree_sitter.
-; Written for the grammar imustafin/tree-sitter-eiffel v1.0.0 (MIT).
+; Written for the grammar imustafin/tree-sitter-eiffel v1.0.0 (MIT) with
+; Clib/grammars/eiffel/simple_eiffel.patch.
 ; A later pattern wins over an earlier one on the same text.
 
 (identifier) @variable
@@ -10,7 +11,8 @@
   "detachable" "do" "else" "elseif" "end" "ensure" "expanded" "export"
   "external" "feature" "from" "frozen" "if" "implies" "inherit" "inspect"
   "invariant" "like" "local" "loop" "note" "obsolete" "old" "once" "or"
-  "or else" "redefine" "rename" "require" "rescue" "select" "some" "then"
+  "or else" "redefine" "rename" "require" "rescue" "select" "separate" "some"
+  "then"
   "undefine" "until" "variant" "when" "xor" "Precursor"
 ] @keyword
 

@@ -1,0 +1,441 @@
+--- a/grammar.js
++++ b/grammar.js
+@@ -198,6 +198,7 @@
+ 
+     class_type: $ => seq(
+       optional($.attachment_mark),
++      optional('separate'),
+       $.class_name,
+       optional($.actual_generics)
+     ),
+@@ -681,8 +682,7 @@
+ 
+     manifest_tuple: $ => seq(
+       '[',
+-      $.expression,
+-      repeat(seq(',', $.expression)),
++      optional(join1($.expression, ',')),
+       ']'
+     ),
+ 
+@@ -839,11 +839,14 @@
+ 
+     class_type: $ => seq(
+       optional($.attachment_mark),
++      optional('separate'),
+       $.class_name,
+       optional($.actual_generics)
+     ),
+ 
+     tuple_type: $ => seq(
++      optional($.attachment_mark),
++      optional('separate'),
+       alias('TUPLE', $.class_name),
+       optional(seq('[', $.tuple_parameter_list, ']')),
+     ),
+@@ -855,6 +858,7 @@
+ 
+     anchored: $ => seq(
+       optional($.attachment_mark),
++      optional('separate'),
+       'like',
+       choice($.call, $.current)
+     ),
+@@ -945,12 +949,21 @@
+ 
+     sign: $ => choice('-', '+'),
+ 
+-    integer: $ => /[0-9][0-9_]*/, // TODO: finish Integer
+-
+-    character_constant: $ => seq("'", $.character, "'"),
++    integer: $ => token(choice(
++      /0[xX][0-9a-fA-F][0-9a-fA-F_]*/,
++      /0[cC][0-7][0-7_]*/,
++      /0[bB][01][01_]*/,
++      /[0-9][0-9_]*/
++    )),
+ 
+-    character: $ => /./, // TODO: finish Character
++    character_constant: $ => seq("'", $.character, token.immediate("'")),
+ 
++    character: $ => token.immediate(choice(
++      /%\/[0-9a-zA-Z_]+\//,
++      /%[^\n]/,
++      /[^%\n]/
++    )),
++
+     boolean_constant: $ => choice('True', 'False'),
+ 
+     class_name: $ => $._id,
+--- /dev/null
++++ b/test/corpus/simple_eiffel.txt
+@@ -0,0 +1,369 @@
++===
++Number. Integers in base 16, 8 and 2
++===
++class A
++feature
++  a: INTEGER = 0x1F
++  b: NATURAL_32 = 0xFF_FF
++  c: INTEGER = 0c777
++  d: INTEGER = 0b1010_0101
++end
++---
++(source_file
++  (class_declaration
++    (class_name)
++    (feature_clause
++      (feature_declaration
++        (new_feature
++          (extended_feature_name
++            (identifier)))
++        (class_type
++          (class_name))
++        (explicit_value
++          (integer_constant
++            (integer))))
++      (feature_declaration
++        (new_feature
++          (extended_feature_name
++            (identifier)))
++        (class_type
++          (class_name))
++        (explicit_value
++          (integer_constant
++            (integer))))
++      (feature_declaration
++        (new_feature
++          (extended_feature_name
++            (identifier)))
++        (class_type
++          (class_name))
++        (explicit_value
++          (integer_constant
++            (integer))))
++      (feature_declaration
++        (new_feature
++          (extended_feature_name
++            (identifier)))
++        (class_type
++          (class_name))
++        (explicit_value
++          (integer_constant
++            (integer)))))))
++
++===
++Character. Special characters and character codes
++===
++class A
++feature
++  a: CHARACTER = '%N'
++  b: CHARACTER = '%''
++  c: CHARACTER = '%/31/'
++  d: CHARACTER_32 = '%/0x1F600/'
++end
++---
++(source_file
++  (class_declaration
++    (class_name)
++    (feature_clause
++      (feature_declaration
++        (new_feature
++          (extended_feature_name
++            (identifier)))
++        (class_type
++          (class_name))
++        (explicit_value
++          (character_constant
++            (character))))
++      (feature_declaration
++        (new_feature
++          (extended_feature_name
++            (identifier)))
++        (class_type
++          (class_name))
++        (explicit_value
++          (character_constant
++            (character))))
++      (feature_declaration
++        (new_feature
++          (extended_feature_name
++            (identifier)))
++        (class_type
++          (class_name))
++        (explicit_value
++          (character_constant
++            (character))))
++      (feature_declaration
++        (new_feature
++          (extended_feature_name
++            (identifier)))
++        (class_type
++          (class_name))
++        (explicit_value
++          (character_constant
++            (character)))))))
++
++===
++Character. White space and characters that are tokens elsewhere
++===
++class A
++feature
++  a: CHARACTER = ' '
++  b: CHARACTER = '@'
++  c: CHARACTER = '"'
++  d: CHARACTER = '-'
++end
++---
++(source_file
++  (class_declaration
++    (class_name)
++    (feature_clause
++      (feature_declaration
++        (new_feature
++          (extended_feature_name
++            (identifier)))
++        (class_type
++          (class_name))
++        (explicit_value
++          (character_constant
++            (character))))
++      (feature_declaration
++        (new_feature
++          (extended_feature_name
++            (identifier)))
++        (class_type
++          (class_name))
++        (explicit_value
++          (character_constant
++            (character))))
++      (feature_declaration
++        (new_feature
++          (extended_feature_name
++            (identifier)))
++        (class_type
++          (class_name))
++        (explicit_value
++          (character_constant
++            (character))))
++      (feature_declaration
++        (new_feature
++          (extended_feature_name
++            (identifier)))
++        (class_type
++          (class_name))
++        (explicit_value
++          (character_constant
++            (character)))))))
++
++===
++Tuple type. Attachment mark with labels
++===
++class A
++feature
++  x: detachable TUPLE [row, col: INTEGER]
++  y: attached TUPLE [name: STRING; size: INTEGER]
++  z: LIST [detachable TUPLE [INTEGER, INTEGER]]
++end
++---
++(source_file
++  (class_declaration
++    (class_name)
++    (feature_clause
++      (feature_declaration
++        (new_feature
++          (extended_feature_name
++            (identifier)))
++        (tuple_type
++          (attachment_mark)
++          (class_name)
++          (tuple_parameter_list
++            (entity_declaration_group
++              (identifier)
++              (identifier)
++              (class_type
++                (class_name))))))
++      (feature_declaration
++        (new_feature
++          (extended_feature_name
++            (identifier)))
++        (tuple_type
++          (attachment_mark)
++          (class_name)
++          (tuple_parameter_list
++            (entity_declaration_group
++              (identifier)
++              (class_type
++                (class_name)))
++            (entity_declaration_group
++              (identifier)
++              (class_type
++                (class_name))))))
++      (feature_declaration
++        (new_feature
++          (extended_feature_name
++            (identifier)))
++        (class_type
++          (class_name)
++          (actual_generics
++            (tuple_type
++              (attachment_mark)
++              (class_name)
++              (tuple_parameter_list
++                (class_type
++                  (class_name))
++                (class_type
++                  (class_name))))))))))
++
++===
++Tuple. Empty manifest tuple
++===
++class A
++feature
++  f
++    do
++      g ([])
++      t := []
++    end
++end
++---
++(source_file
++  (class_declaration
++    (class_name)
++    (feature_clause
++      (feature_declaration
++        (new_feature
++          (extended_feature_name
++            (identifier)))
++        (attribute_or_routine
++          (feature_body
++            (effective_routine
++              (internal
++                (routine_mark)
++                (call
++                  (unqualified_call
++                    (identifier)
++                    (actuals
++                      (expression
++                        (manifest_tuple)))))
++                (assignment
++                  (call
++                    (unqualified_call
++                      (identifier)))
++                  (expression
++                    (manifest_tuple)))))))))))
++
++===
++Constant. Manifest type before the patched constants
++===
++class A
++invariant
++  {NATURAL_32} 0xFF = x
++  {CHARACTER_32} ' ' = y
++end
++---
++(source_file
++  (class_declaration
++    (class_name)
++    (invariant
++      (assertion_clause
++        (expression
++          (equality
++            (expression
++              (manifest_type
++                (class_type
++                  (class_name)))
++              (integer_constant
++                (integer)))
++            (comparison)
++            (expression
++              (call
++                (unqualified_call
++                  (identifier)))))))
++      (assertion_clause
++        (expression
++          (equality
++            (expression
++              (manifest_type
++                (class_type
++                  (class_name)))
++              (character_constant
++                (character)))
++            (comparison)
++            (expression
++              (call
++                (unqualified_call
++                  (identifier))))))))))
++
++===
++Type. Separate
++===
++class A
++feature
++  a: separate B
++  b: detachable separate B
++  c: LIST [separate B]
++  d: separate like a
++  e: separate TUPLE [x: B]
++  f (x: separate B)
++    do
++    end
++end
++---
++(source_file
++  (class_declaration
++    (class_name)
++    (feature_clause
++      (feature_declaration
++        (new_feature
++          (extended_feature_name
++            (identifier)))
++        (class_type
++          (class_name)))
++      (feature_declaration
++        (new_feature
++          (extended_feature_name
++            (identifier)))
++        (class_type
++          (attachment_mark)
++          (class_name)))
++      (feature_declaration
++        (new_feature
++          (extended_feature_name
++            (identifier)))
++        (class_type
++          (class_name)
++          (actual_generics
++            (class_type
++              (class_name)))))
++      (feature_declaration
++        (new_feature
++          (extended_feature_name
++            (identifier)))
++        (anchored
++          (call
++            (unqualified_call
++              (identifier)))))
++      (feature_declaration
++        (new_feature
++          (extended_feature_name
++            (identifier)))
++        (tuple_type
++          (class_name)
++          (tuple_parameter_list
++            (entity_declaration_group
++              (identifier)
++              (class_type
++                (class_name))))))
++      (feature_declaration
++        (new_feature
++          (extended_feature_name
++            (identifier)))
++        (formal_arguments
++          (entity_declaration_group
++            (identifier)
++            (class_type
++              (class_name))))
++        (attribute_or_routine
++          (feature_body
++            (effective_routine
++              (internal
++                (routine_mark)))))))))

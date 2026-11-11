@@ -1,3 +1,7 @@
 imustafin/tree-sitter-eiffel v1.0.0
 commit d934fb44f1d22bb76be6b56a7b2425ab3b1daf8b
-Kept: src/parser.c, src/scanner.c where there is one, src/tree_sitter/, unchanged.
+Patched: simple_eiffel.patch, beside this file, changes grammar.js (and adds test/corpus/simple_eiffel.txt).
+Kept: src/parser.c and src/tree_sitter/, generated from the patched grammar.js by
+  tree-sitter CLI v0.27.1: tree-sitter generate --abi 14
+To generate again: check out the tag above, apply the patch (patch -p1 < simple_eiffel.patch),
+  run the command, and copy src/parser.c and src/tree_sitter/*.h here.

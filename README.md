@@ -4,7 +4,7 @@ Tree-sitter for Eiffel: incremental parsing and syntax highlighting, with the ru
 
 It wraps [tree-sitter](https://github.com/tree-sitter/tree-sitter), a C library that parses source code into a syntax tree and re-parses only what an edit changed. It was written for the code editor of [simple_gui](https://github.com/simple-eiffel/simple_gui), and has no dependency on it. Part of the [Simple Eiffel](https://github.com/simple-eiffel) ecosystem.
 
-> **Status: first version, not yet released.** The C wrapper and the Eiffel classes below are here and tested on macOS. Windows and Linux runs, the background worker and the adapter for simple_gui's editor are still to come. See "Limits" for what the Eiffel grammar does not parse yet.
+> **Status: first version, not yet released.** The C wrapper and the Eiffel classes below are here and tested on macOS. Windows and Linux runs, the background worker and the adapter for simple_gui's editor are still to come. The Eiffel grammar is patched for Simple Eiffel's own source; see "Limits" for what it still does not parse.
 
 ## What it gives
 
@@ -100,6 +100,7 @@ Clib/
   test/sts_test.c             the C tests, with a survey and a dump tool
   tree-sitter/                the runtime, vendored
   grammars/<name>/            each grammar's generated parser, vendored
+  grammars/eiffel/simple_eiffel.patch   our changes to the Eiffel grammar (VERSION says how to generate the parser again)
 queries/<name>/               highlights.scm, folds.scm, brackets.scm
 src/                          the Eiffel classes
 testing/                      the Eiffel tests and the fixtures
@@ -109,18 +110,22 @@ To add a grammar: copy its `src/` and LICENSE under `Clib/grammars/<name>/` with
 
 ## Limits
 
-- **The Eiffel grammar is v1.0.0 as published, and it does not parse all Eiffel.** Integers in base 16, 8 or 2 (`0x1F`), character codes (`'%N'`), some other character constants, tuple types with labels, the empty tuple, a manifest with its type (`{STRING_32} "#"`) and `separate` give an error node. Inside one, keywords, strings, comments and operators keep their styles, but folds and bracket pairs across it are lost. A `separate` type or a `'%/31/'` constant can turn a whole class into one error node. A patched grammar is planned.
+- **The Eiffel grammar is v1.0.0 with a patch of ours, and it still does not parse all Eiffel.**
+  - The patch (`Clib/grammars/eiffel/simple_eiffel.patch`) adds integers in base 16, 8 and 2 (`0x1F`), character codes (`'%N'`, `'%/31/'`) and every one-character constant (`' '`, `'@'`), the attachment mark on a tuple type (`detachable TUPLE [row, col: INTEGER]`), the empty tuple (`[]`) and `separate` before a type.
+  - With it, all 487 `.e` files of simple_gui, simple_widgets, simple_shell and simple_json parse without an error node (136 of them had one before).
+  - Still an error node: keywords in another letter case (`false`, `END`), `unique`, a string continued over lines with `%`, an inline agent followed by its arguments (`end (x, ?)`), a real with an exponent (`1.0e308`), a `;` before the closing `note`, a feature with two `alias` names, and the `separate ... as ... do` instruction.
+  - Inside an error node, keywords, strings, comments and operators keep their styles, but folds and bracket pairs across it are lost.
 - **Not in this version:** one language inside another (C in an Eiffel `external`), indentation queries, grammars loaded at run time, and stopping a parse that is under way.
 - A query's `#match?` patterns are a small built-in subset of regular expressions; an unsupported predicate or pattern makes the query invalid, with a message.
 
 ## Third-party notices
 
-This library is MIT licensed (see `LICENSE`). It contains the following, each unchanged from its source and each under the license kept beside it:
+This library is MIT licensed (see `LICENSE`). It contains the following, each under the license kept beside it. Each is unchanged from its source, except the Eiffel grammar's parser, which is generated again from the grammar with our patch:
 
 | What | Source | Version | License | Where |
 | --- | --- | --- | --- | --- |
 | tree-sitter runtime | [tree-sitter/tree-sitter](https://github.com/tree-sitter/tree-sitter) | v0.27.1, commit `10eb5ac119eec9cb4267a8e035066473983f5f3a` | MIT, Copyright (c) 2018 Max Brunsfeld | `Clib/tree-sitter/` (`LICENSE`, `VERSION`) |
-| Eiffel grammar | [imustafin/tree-sitter-eiffel](https://github.com/imustafin/tree-sitter-eiffel) | v1.0.0, commit `d934fb44f1d22bb76be6b56a7b2425ab3b1daf8b` | MIT, Copyright (c) 2024 Ilgiz Mustafin, Alessandro Schena | `Clib/grammars/eiffel/` |
+| Eiffel grammar | [imustafin/tree-sitter-eiffel](https://github.com/imustafin/tree-sitter-eiffel) | v1.0.0, commit `d934fb44f1d22bb76be6b56a7b2425ab3b1daf8b`, with `simple_eiffel.patch` | MIT, Copyright (c) 2024 Ilgiz Mustafin, Alessandro Schena | `Clib/grammars/eiffel/` (`LICENSE`, `VERSION`, the patch) |
 | C grammar | [tree-sitter/tree-sitter-c](https://github.com/tree-sitter/tree-sitter-c) | v0.24.2, commit `b780e47fc780ddc8da13afa35a3f4ed5c157823d` | MIT, Copyright (c) 2014 Max Brunsfeld | `Clib/grammars/c/` |
 | JSON grammar | [tree-sitter/tree-sitter-json](https://github.com/tree-sitter/tree-sitter-json) | v0.24.8, commit `ee35a6ebefcef0c5c416c0d1ccec7370cfca5a24` | MIT, Copyright (c) 2014 Max Brunsfeld | `Clib/grammars/json/` |
 | XML grammar | [tree-sitter-grammars/tree-sitter-xml](https://github.com/tree-sitter-grammars/tree-sitter-xml) | v0.7.0, commit `4b64dd3a03ec002258d6268d712fd93716d6ab57` | MIT, Copyright (c) 2023 ObserverOfTime | `Clib/grammars/xml/`, and `Clib/grammars/common/scanner.h` |
