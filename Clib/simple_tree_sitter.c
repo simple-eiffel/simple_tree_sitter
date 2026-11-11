@@ -1599,6 +1599,30 @@ int32_t *sts_doc_spans(sts_doc *a_doc, int32_t a_first_line, int32_t a_last_line
 	return sts_ints_take(&l_spans, 4, a_count);
 }
 
+int32_t *sts_doc_spans_of(sts_doc *a_doc, const int32_t *a_ranges, int32_t a_range_count, int32_t *a_count)
+{
+	sts_ints l_all = { NULL, 0, 0 };
+	int32_t i, j, l_limited = 0;
+
+	if (a_count) {
+		*a_count = 0;
+	}
+	if (!a_doc || !a_ranges) {
+		return NULL;
+	}
+	for (i = 0; i < a_range_count; i++) {
+		int32_t n = 0;
+		int32_t *l_spans = sts_doc_spans(a_doc, a_ranges[2 * i], a_ranges[2 * i + 1], &n);
+		l_limited |= a_doc->limited;
+		for (j = 0; j < n * 4; j++) {
+			sts_ints_put(&l_all, l_spans[j]);
+		}
+		sts_free(l_spans);
+	}
+	a_doc->limited = l_limited;
+	return sts_ints_take(&l_all, 4, a_count);
+}
+
 int32_t *sts_doc_changed_lines(sts_doc *a_doc, int32_t *a_count)
 {
 	int32_t *l_block = NULL;
@@ -1764,6 +1788,20 @@ int32_t sts_doc_bracket_at(sts_doc *a_doc, int32_t a_position, int32_t *a_pair)
 		}
 	}
 	return 0;
+}
+
+int32_t *sts_doc_bracket_pair(sts_doc *a_doc, int32_t a_position)
+{
+	int32_t l_pair[4];
+	int32_t *l_block;
+	if (!sts_doc_bracket_at(a_doc, a_position, l_pair) || l_pair[1] <= 0 || l_pair[3] <= 0) {
+		return NULL;
+	}
+	l_block = (int32_t *)sts_alloc(sizeof l_pair);
+	if (l_block) {
+		memcpy(l_block, l_pair, sizeof l_pair);
+	}
+	return l_block;
 }
 
 int32_t *sts_doc_run(sts_doc *a_doc, sts_query *a_query, int32_t a_first, int32_t a_last, int32_t *a_count)

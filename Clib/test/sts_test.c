@@ -641,6 +641,57 @@ static void test_eiffel_constructs(const char *a_fixtures)
 	free(l_text.chars);
 }
 
+static void test_results_in_blocks(const char *a_fixtures)
+	/* The two results a worker hands on as blocks: spans for several ranges, and a bracket pair. */
+{
+	text32 l_text = read_text(a_fixtures, "sample.e");
+	sts_doc *l_doc = sts_doc_new("eiffel");
+	static const int32_t l_ranges[] = { 0, 4, 18, 28, 43, 43, 73, 400 };
+	int32_t *l_all, *l_part, *l_joined = NULL, *l_block;
+	int32_t l_pair[4];
+	int32_t n = 0, l_count = 0, l_total = 0, i, l_position;
+
+	printf("results in blocks\n");
+	sts_doc_set_text(l_doc, l_text.chars, l_text.count);
+	for (i = 0; i < 4; i++) {
+		l_part = sts_doc_spans(l_doc, l_ranges[2 * i], l_ranges[2 * i + 1], &l_count);
+		l_joined = (int32_t *)realloc(l_joined, (size_t)(l_total + l_count + 1) * 4 * sizeof(int32_t));
+		if (l_count > 0) {
+			memcpy(l_joined + l_total * 4, l_part, (size_t)l_count * 4 * sizeof(int32_t));
+		}
+		l_total += l_count;
+		sts_free(l_part);
+	}
+	l_all = sts_doc_spans_of(l_doc, l_ranges, 4, &n);
+	check("the spans of four ranges are the four sets of spans, in order", l_total > 20 && same_ints(l_all, n, l_joined, l_total, 4));
+	check("and they are well formed", spans_well_formed(l_doc, l_all, n));
+	check("an ordinary result is not limited", sts_doc_was_limited(l_doc) == 0);
+	sts_free(l_all);
+	free(l_joined);
+	l_all = sts_doc_spans_of(l_doc, l_ranges, 1, &n);
+	l_part = sts_doc_spans(l_doc, 0, 4, &l_count);
+	check("one range gives what sts_doc_spans gives", same_ints(l_all, n, l_part, l_count, 4));
+	sts_free(l_all);
+	sts_free(l_part);
+	n = 7;
+	check("no ranges give no spans", sts_doc_spans_of(l_doc, l_ranges, 0, &n) == NULL && n == 0);
+	n = 7;
+	check("no block of ranges gives no spans", sts_doc_spans_of(l_doc, NULL, 0, &n) == NULL && n == 0);
+	check("no document gives no spans", sts_doc_spans_of(NULL, l_ranges, 4, &n) == NULL && n == 0);
+
+	l_position = find(&l_text, "(a_name", 1);
+	l_block = sts_doc_bracket_pair(l_doc, l_position);
+	check("a pair in a block is the pair sts_doc_bracket_at gives", l_block && sts_doc_bracket_at(l_doc, l_position, l_pair) == 1
+		&& memcmp(l_block, l_pair, sizeof l_pair) == 0 && l_block[0] == l_position && l_block[1] == 1);
+	sts_free(l_block);
+	check("no pair, no block", sts_doc_bracket_pair(l_doc, l_position + 3) == NULL);
+	check("past the text, no block", sts_doc_bracket_pair(l_doc, l_text.count + 5) == NULL);
+	check("no document, no block", sts_doc_bracket_pair(NULL, 0) == NULL);
+
+	sts_doc_free(l_doc);
+	free(l_text.chars);
+}
+
 static void test_other_languages(const char *a_fixtures)
 {
 	text32 l_text;
@@ -1331,6 +1382,7 @@ int main(int argc, char **argv)
 	test_queries();
 	test_limits_and_wide_predicates();
 	test_owed_lines();
+	test_results_in_blocks(argv[1]);
 	test_trees(argv[1]);
 	test_random_edits(argv[1], "eiffel", "sample.e");
 	test_random_edits(argv[1], "eiffel", "constructs.e");
