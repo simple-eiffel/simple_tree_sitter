@@ -958,6 +958,7 @@ static void test_limits_and_wide_predicates(void)
 {
 	static const char l_json[] = "[\"na\xC3\xAFve \xE2\x88\x80x \xF0\x9F\x98\x80 done\", \"naive\", \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaac\"]";
 	static const char l_slow[] = "((string_content) @s (#match? @s \"^(a*)*b$\"))";
+	static const char l_negated[] = "((string_content) @s (#not-match? @s \"^(a*)*b$\"))";
 	static const char l_plain[] = "(string_content) @s";
 	char l_message[200];
 	int32_t l_offset = 0, l_kind = 0, n = 0;
@@ -988,6 +989,14 @@ static void test_limits_and_wide_predicates(void)
 	check("the slow pattern compiles", l_query != NULL);
 	check("it matches nothing", sts_doc_run(l_doc, l_query, 0, l_text.count - 1, &n) == NULL && n == 0);
 	check("and the document says a limit was hit", sts_doc_was_limited(l_doc) == 1);
+	sts_query_free(l_query);
+	/* No answer is not "no": the negated test must not take in the string the search
+	   gave up on. The two strings it could judge are in. */
+	l_query = sts_query_new("json", l_negated, (int32_t)strlen(l_negated), &l_offset, &l_kind, l_message, sizeof(l_message));
+	check("the negated slow pattern compiles", l_query != NULL);
+	sts_free(sts_doc_run(l_doc, l_query, 0, l_text.count - 1, &n));
+	check("#not-match? under a limit gains nothing", n == 2);
+	check("and the limit is told", sts_doc_was_limited(l_doc) == 1);
 	sts_query_free(l_query);
 	l_query = sts_query_new("json", l_plain, (int32_t)strlen(l_plain), &l_offset, &l_kind, l_message, sizeof(l_message));
 	sts_free(sts_doc_run(l_doc, l_query, 0, l_text.count - 1, &n));
@@ -1175,12 +1184,37 @@ static void test_convergence(const char *a_fixtures, const char *a_language, con
 	free(l_original.chars);
 }
 
+static int32_t walk_from_root(sts_cursor *a_cursor, int32_t *a_depth)
+	/* The number of nodes a walk of the whole tree visits, from the root and back to it;
+	   `a_depth' is 0 after a walk that came back. */
+{
+	int32_t l_nodes = 0, l_done = 0;
+	*a_depth = 0;
+	while (!l_done) {
+		l_nodes++;
+		if (sts_cursor_goto_first_child(a_cursor)) {
+			(*a_depth)++;
+		} else {
+			while (!l_done && !sts_cursor_goto_next_sibling(a_cursor)) {
+				if (sts_cursor_goto_parent(a_cursor)) {
+					(*a_depth)--;
+				} else {
+					l_done = 1;
+				}
+			}
+		}
+	}
+	return l_nodes;
+}
+
 static void test_trees(const char *a_fixtures)
 {
+	static const char l_short[] = "[1, 2]";
 	text32 l_text = read_text(a_fixtures, "sample.json");
+	text32 l_other = from_string(l_short);
 	sts_doc *l_doc = sts_doc_new("json");
 	sts_cursor *l_cursor;
-	int32_t l_info[7], l_nodes = 0, l_depth = 0, l_done = 0;
+	int32_t l_info[7], l_nodes = 0, l_depth = 0, l_length = 0;
 	const char *l_type;
 	char *l_sexp;
 
@@ -1193,23 +1227,23 @@ static void test_trees(const char *a_fixtures)
 	l_cursor = sts_cursor_new(l_doc);
 	l_type = sts_cursor_node(l_cursor, l_info);
 	check("the root covers the text", l_type && strcmp(l_type, "document") == 0 && l_info[0] == 0 && l_info[1] >= l_text.count - 1 && l_info[2] == 0);
-	while (!l_done) {
-		l_nodes++;
-		if (sts_cursor_goto_first_child(l_cursor)) {
-			l_depth++;
-		} else {
-			while (!l_done && !sts_cursor_goto_next_sibling(l_cursor)) {
-				if (sts_cursor_goto_parent(l_cursor)) {
-					l_depth--;
-				} else {
-					l_done = 1;
-				}
-			}
-		}
-	}
+	l_length = l_info[1];
+	l_nodes = walk_from_root(l_cursor, &l_depth);
 	check("a walk visits every node and comes back", l_nodes > 40 && l_depth == 0);
-	sts_cursor_free(l_cursor);
+
+	/* A cursor keeps the tree it was made on. After an edit, after a whole new text and
+	   after the document is gone it walks that tree still; a memory checker finds
+	   nothing freed under it. */
+	check("the edit is taken", sts_doc_edit(l_doc, 0, 0, l_other.chars, 1) == 1);
+	check("a cursor outlives an edit", walk_from_root(l_cursor, &l_depth) == l_nodes && l_depth == 0);
+	sts_doc_set_text(l_doc, l_other.chars, l_other.count);
+	check("and a whole new text", walk_from_root(l_cursor, &l_depth) == l_nodes && l_depth == 0);
 	sts_doc_free(l_doc);
+	check("and the document", walk_from_root(l_cursor, &l_depth) == l_nodes && l_depth == 0);
+	l_type = sts_cursor_node(l_cursor, l_info);
+	check("it tells of the tree as it was", l_type && strcmp(l_type, "document") == 0 && l_info[0] == 0 && l_info[1] == l_length);
+	sts_cursor_free(l_cursor);
+	free(l_other.chars);
 	free(l_text.chars);
 }
 

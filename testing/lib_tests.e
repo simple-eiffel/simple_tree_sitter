@@ -1268,29 +1268,20 @@ feature {NONE} -- Worker: blocks and answers
 
 	taken_ranges (a_box: TS_RESULT_BOX): TS_LINE_RANGES
 			-- The line ranges of `a_box', taken from it.
-		local
-			l_count: INTEGER
 		do
-			l_count := a_box.range_count
-			create Result.make_from_block (a_box.take_ranges, l_count)
+			Result := (create {TS_TEST_BOX_TAKER}).taken_ranges (a_box)
 		end
 
 	taken_spans (a_box: TS_RESULT_BOX): TS_SPANS
 			-- The spans of `a_box', taken from it.
-		local
-			l_count: INTEGER
 		do
-			l_count := a_box.span_count
-			create Result.make_from_block (a_box.take_spans, l_count)
+			Result := (create {TS_TEST_BOX_TAKER}).taken_spans (a_box)
 		end
 
 	taken_folds (a_box: TS_RESULT_BOX): TS_LINE_RANGES
 			-- The folds of `a_box', taken from it.
-		local
-			l_count: INTEGER
 		do
-			l_count := a_box.fold_count
-			create Result.make_from_block (a_box.take_folds, l_count)
+			Result := (create {TS_TEST_BOX_TAKER}).taken_folds (a_box)
 		end
 
 	checked_answer (a_tag: STRING; a_box: TS_RESULT_BOX; a_version: INTEGER; a_text: STRING_32): TS_LINE_RANGES

@@ -4,7 +4,7 @@ Tree-sitter for Eiffel: incremental parsing and syntax highlighting, with the ru
 
 It wraps [tree-sitter](https://github.com/tree-sitter/tree-sitter), a C library that parses source code into a syntax tree and re-parses only what an edit changed. It was written for the code editor of [simple_gui](https://github.com/simple-eiffel/simple_gui), and has no dependency on it. Part of the [Simple Eiffel](https://github.com/simple-eiffel) ecosystem.
 
-> **Status: first version, not yet released.** The C wrapper and the Eiffel classes below are here and tested on macOS. The background worker is here too, tested on macOS. Windows and Linux runs and the adapter for simple_gui's editor are still to come. The Eiffel grammar is patched for Simple Eiffel's own source; see "Limits" for what it still does not parse.
+> **Status: first version, not yet released.** The C wrapper and the Eiffel classes below are here and tested on macOS, Windows (MSVC) and Linux. The background worker is here too, tested on macOS so far. The adapter for simple_gui's editor is still to come. The Eiffel grammar is patched for Simple Eiffel's own source; see "Limits" for what it still does not parse.
 
 ## What it gives
 
@@ -152,7 +152,7 @@ To add a grammar: copy its `src/` and LICENSE under `Clib/grammars/<name>/` with
 
 ## Third-party notices
 
-This library is MIT licensed (see `LICENSE`). It contains the following, each under the license kept beside it. Each is unchanged from its source, except the Eiffel grammar's parser, which is generated again from the grammar with our patch:
+This library is MIT licensed (see `LICENSE`). It contains the following, each under the license kept beside it. Each is unchanged from its source, except the Eiffel grammar's parser, which is generated again from the grammar with our patch, and one line of the runtime's `lib/src/query.c` (a leak on a refused query, recorded in `Clib/tree-sitter/VERSION`):
 
 | What | Source | Version | License | Where |
 | --- | --- | --- | --- | --- |
@@ -162,5 +162,9 @@ This library is MIT licensed (see `LICENSE`). It contains the following, each un
 | JSON grammar | [tree-sitter/tree-sitter-json](https://github.com/tree-sitter/tree-sitter-json) | v0.24.8, commit `ee35a6ebefcef0c5c416c0d1ccec7370cfca5a24` | MIT, Copyright (c) 2014 Max Brunsfeld | `Clib/grammars/json/` |
 | XML grammar | [tree-sitter-grammars/tree-sitter-xml](https://github.com/tree-sitter-grammars/tree-sitter-xml) | v0.7.0, commit `4b64dd3a03ec002258d6268d712fd93716d6ab57` | MIT, Copyright (c) 2023 ObserverOfTime | `Clib/grammars/xml/`, and `Clib/grammars/common/scanner.h` |
 
+- **Why the runtime is compiled in** rather than linked from Homebrew's or the system's shared `libtree-sitter` (the fleet's rule, BUILD_STANDARDS section 9: no second *shared* copy of a library the system provides; source compiled in is allowed with its reason stated):
+  - The grammars' generated parsers are made for this runtime's parser format (14, v0.27.1), and the runtime must match them, whatever version a system has installed.
+  - It carries the one-line `query.c` fix above until upstream has it.
+  - Compiled into this library's own object, it cannot collide with another program's shared `libtree-sitter`.
 - The tree-sitter runtime carries two notices of its own: Unicode, Inc.'s for the ICU headers in `Clib/tree-sitter/lib/src/unicode/` (its `LICENSE` is there), and musl's (MIT) for `Clib/tree-sitter/lib/src/wasm-stdlib/`, which this library does not compile.
 - `queries/c/highlights.scm`, `queries/json/highlights.scm` and `queries/xml/highlights.scm` began as the `highlights.scm` of the grammar they serve (MIT, as above) and were changed for this library's capture names. The Eiffel queries and every `folds.scm` and `brackets.scm` were written for this library.

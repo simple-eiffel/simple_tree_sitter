@@ -2,7 +2,9 @@ note
 	description: "[
 		A walk over a document's syntax tree, one node at a time, starting at the
 		root. Made by TS_DOCUMENT.new_cursor. It is good for the document `version'
-		it was made at: once the document changes, make a new one.
+		it was made at: once the document changes, make a new one. The C cursor
+		keeps the tree it was made on, so a walk past that point in a build without
+		precondition checks reads an old tree and never freed memory.
 	]"
 
 class
