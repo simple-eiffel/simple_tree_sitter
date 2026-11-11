@@ -1,3 +1,7 @@
 tree-sitter/tree-sitter v0.27.1
 commit 10eb5ac119eec9cb4267a8e035066473983f5f3a
-Kept: lib/include and lib/src, unchanged.
+Kept: lib/include and lib/src, unchanged except for one line:
+- lib/src/query.c, ts_query__parse_pattern, the field branch: when the field
+  name is unknown, field_capture_quantifiers is now freed before returning
+  TSQueryErrorField (it leaked 16 bytes for each refused query of that kind).
+  Upstream master has the same omission as of 2026-11-11.

@@ -108,7 +108,9 @@ int32_t sts_doc_bracket_at(sts_doc *a_doc, int32_t a_position, int32_t *a_pair);
 int32_t sts_doc_was_limited(const sts_doc *a_doc);
 	/* Did a limit cut short the last call of sts_doc_spans, sts_doc_folds,
 	   sts_doc_bracket_at or sts_doc_run on this document? The limits are the query
-	   cursor's matches in progress and the steps one #match? test may take. */
+	   cursor's matches in progress and the steps one #match? test may take. A test the
+	   step limit stopped fails, #not-match? too: a limited result may lack items and
+	   never holds one it should not. */
 
 /* Trees, for tools and tests */
 
@@ -119,7 +121,9 @@ const char *sts_doc_node_at(sts_doc *a_doc, int32_t a_position, int32_t *an_info
 	   length, first line, last line, and whether it is named, an error and missing in
 	   `an_info' [0..6]. NULL without a tree. */
 sts_cursor *sts_cursor_new(sts_doc *a_doc);
-	/* A cursor on the root node; NULL without a tree. Valid until the document changes. */
+	/* A cursor on the root node; NULL without a tree. It walks the tree as it was when
+	   the cursor was made: a change of the document, or its end, leaves the cursor safe
+	   to use and out of date. */
 void sts_cursor_free(sts_cursor *a_cursor);
 int32_t sts_cursor_goto_first_child(sts_cursor *a_cursor);
 int32_t sts_cursor_goto_next_sibling(sts_cursor *a_cursor);

@@ -2879,6 +2879,7 @@ static TSQueryError ts_query__parse_pattern(
     );
     if (!field_id) {
       stream->input = field_name;
+      capture_quantifiers_delete(&field_capture_quantifiers);
       return TSQueryErrorField;
     }
 
