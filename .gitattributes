@@ -1,0 +1,5 @@
+# The tests count characters in these files, so they are the same bytes everywhere.
+testing/fixtures/* text eol=lf
+queries/**/*.scm text eol=lf
+# The patch must apply to the upstream grammar, whose lines end in LF.
+Clib/grammars/eiffel/simple_eiffel.patch text eol=lf

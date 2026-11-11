@@ -1,0 +1,3 @@
+tree-sitter/tree-sitter-c v0.24.2
+commit b780e47fc780ddc8da13afa35a3f4ed5c157823d
+Kept: src/parser.c, src/scanner.c where there is one, src/tree_sitter/, unchanged.

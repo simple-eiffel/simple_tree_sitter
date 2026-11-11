@@ -1,0 +1,12 @@
+{
+	"name": "café ∀ 😀",
+	"count": 42,
+	"ratio": 2.5,
+	"ready": true,
+	"nothing": null,
+	"items": [
+		1,
+		2,
+		{ "deep": [ "a", "b" ] }
+	]
+}
