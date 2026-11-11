@@ -1,0 +1,3 @@
+# The tests count characters in these files, so they are the same bytes everywhere.
+testing/fixtures/* text eol=lf
+queries/**/*.scm text eol=lf

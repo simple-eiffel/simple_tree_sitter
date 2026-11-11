@@ -1,0 +1,3 @@
+tree-sitter/tree-sitter v0.27.1
+commit 10eb5ac119eec9cb4267a8e035066473983f5f3a
+Kept: lib/include and lib/src, unchanged.

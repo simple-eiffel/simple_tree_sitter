@@ -1,0 +1,18 @@
+# Eiffel build output
+EIFGENs/
+
+# C build output: each machine builds the library with Clib/Makefile or Clib/build.bat
+Clib/build/
+*.o
+*.obj
+*.a
+*.lib
+*.exe
+
+# Editors and systems
+*.swp
+*~
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

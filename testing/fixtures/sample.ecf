@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="ISO-8859-1"?>
+<system name="sample" uuid="00000000-0000-0000-0000-000000000001">
+	<!-- A small project file for the simple_tree_sitter tests: café ∀ 😀. -->
+	<target name="sample">
+		<root class="SAMPLE" feature="make"/>
+		<option warning="warning" manifest_array_type="mismatch_warning">
+			<assertions precondition="true" postcondition="true"/>
+		</option>
+		<setting name="console_application" value="true"/>
+		<library name="base" location="$ISE_LIBRARY/library/base/base.ecf"/>
+		<cluster name="src" location="./src/" recursive="true">
+			<description>Sources &amp; more</description>
+		</cluster>
+	</target>
+</system>

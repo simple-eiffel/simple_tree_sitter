@@ -1,0 +1,3 @@
+imustafin/tree-sitter-eiffel v1.0.0
+commit d934fb44f1d22bb76be6b56a7b2425ab3b1daf8b
+Kept: src/parser.c, src/scanner.c where there is one, src/tree_sitter/, unchanged.
