@@ -578,6 +578,69 @@ static void test_eiffel(const char *a_fixtures)
 	free(l_text.chars);
 }
 
+static void test_eiffel_constructs(const char *a_fixtures)
+	/* The constructs the Eiffel grammar is patched for (grammars/eiffel/simple_eiffel.patch). */
+{
+	text32 l_text = read_text(a_fixtures, "constructs.e");
+	sts_doc *l_doc = sts_doc_new("eiffel");
+	int32_t l_length = 0, n = 0, l_position, l_line, l_column;
+	int32_t l_info[7];
+	int32_t *l_folds, *l_spans;
+	const char *l_type;
+	char *l_sexp;
+
+	printf("eiffel constructs\n");
+	sts_doc_set_text(l_doc, l_text.chars, l_text.count);
+	check("constructs.e has no error", sts_doc_has_error(l_doc) == 0);
+
+	check("a base 16 integer", style_of(l_doc, &l_text, "0xFF_FF", 1, &l_length) == STS_STYLE_NUMBER && l_length == 7);
+	check("a base 8 integer", style_of(l_doc, &l_text, "0c777", 1, &l_length) == STS_STYLE_NUMBER && l_length == 5);
+	check("a base 2 integer", style_of(l_doc, &l_text, "0b1010_0101", 1, &l_length) == STS_STYLE_NUMBER && l_length == 11);
+	check("a decimal integer", style_of(l_doc, &l_text, "1_000", 1, &l_length) == STS_STYLE_NUMBER && l_length == 5);
+	check("a base 16 integer in an expression", style_of(l_doc, &l_text, "0x10", 1, &l_length) == STS_STYLE_NUMBER && l_length == 4);
+
+	check("a special character", style_of(l_doc, &l_text, "'%N'", 1, &l_length) == STS_STYLE_STRING && l_length == 4);
+	check("a character code", style_of(l_doc, &l_text, "'%/31/'", 1, &l_length) == STS_STYLE_STRING && l_length == 7);
+	check("a character code in base 16", style_of(l_doc, &l_text, "'%/0x1F600/'", 1, &l_length) == STS_STYLE_STRING && l_length == 12);
+	check("a space", style_of(l_doc, &l_text, "' '", 1, &l_length) == STS_STYLE_STRING && l_length == 3);
+	check("an at sign", style_of(l_doc, &l_text, "'@'", 1, &l_length) == STS_STYLE_STRING && l_length == 3);
+	check("a quote", style_of(l_doc, &l_text, "'%''", 1, &l_length) == STS_STYLE_STRING && l_length == 4);
+	check("a double quote", style_of(l_doc, &l_text, "'\"'", 1, &l_length) == STS_STYLE_STRING && l_length == 3);
+	check("a percent sign", style_of(l_doc, &l_text, "'%%'", 1, &l_length) == STS_STYLE_STRING && l_length == 4);
+	check("a minus sign", style_of(l_doc, &l_text, "'-'", 1, &l_length) == STS_STYLE_STRING && l_length == 3);
+	line_and_column(&l_text, find(&l_text, "accented: CHARACTER_32 = ", 1) + 25, &l_line, &l_column);
+	l_spans = sts_doc_spans(l_doc, l_line, l_line, &n);
+	check("an accented letter", span_at(l_spans, n, l_line, l_column, &l_length) == STS_STYLE_STRING && l_length == 3);
+	sts_free(l_spans);
+	l_position = find(&l_text, "'%/31/'", 1);
+	l_type = sts_doc_node_at(l_doc, l_position + 1, l_info);
+	check("the code is one character node", l_type && strcmp(l_type, "character") == 0 && l_info[0] == l_position + 1 && l_info[1] == 5);
+
+	check("detachable before TUPLE is a keyword", style_of(l_doc, &l_text, "detachable TUPLE [row", 1, &l_length) == STS_STYLE_KEYWORD && l_length == 10);
+	check("TUPLE is a type", style_of(l_doc, &l_text, "TUPLE [row", 1, &l_length) == STS_STYLE_TYPE && l_length == 5);
+	check("a label's type is a type", style_of(l_doc, &l_text, "INTEGER]", 1, &l_length) == STS_STYLE_TYPE && l_length == 7);
+	l_sexp = sts_doc_sexp(l_doc);
+	check("the empty tuple is a manifest tuple with no items", l_sexp && strstr(l_sexp, "(manifest_tuple)") != NULL);
+	sts_free(l_sexp);
+
+	check("a string after its type", style_of(l_doc, &l_text, "\"#\"", 1, &l_length) == STS_STYLE_STRING && l_length == 3);
+	check("the type before it", style_of(l_doc, &l_text, "STRING_32} \"#\"", 1, &l_length) == STS_STYLE_TYPE && l_length == 9);
+	check("an integer after its type", style_of(l_doc, &l_text, "0x1F)", 1, &l_length) == STS_STYLE_NUMBER && l_length == 4);
+
+	check("separate is a keyword", style_of(l_doc, &l_text, "separate CONSTRUCTS\n", 1, &l_length) == STS_STYLE_KEYWORD && l_length == 8);
+	check("the type after it", style_of(l_doc, &l_text, "CONSTRUCTS\n\n\tworkers", 1, &l_length) == STS_STYLE_TYPE && l_length == 10);
+	check("separate in a generic", style_of(l_doc, &l_text, "separate CONSTRUCTS]", 1, &l_length) == STS_STYLE_KEYWORD);
+	check("separate in an argument", style_of(l_doc, &l_text, "separate READABLE", 1, &l_length) == STS_STYLE_KEYWORD);
+
+	/* The class folds from `class' to its `end': no error breaks the structure. */
+	l_folds = sts_doc_folds(l_doc, &n);
+	check("the class folds to the last line", n >= 1 && l_folds[0] == 1 && l_folds[1] == sts_doc_line_count(l_doc) - 2);
+	sts_free(l_folds);
+
+	sts_doc_free(l_doc);
+	free(l_text.chars);
+}
+
 static void test_other_languages(const char *a_fixtures)
 {
 	text32 l_text;
@@ -1262,12 +1325,15 @@ int main(int argc, char **argv)
 	test_fixture(argv[1], "json", "sample.json");
 	test_fixture(argv[1], "xml", "sample.ecf");
 	test_eiffel(argv[1]);
+	test_fixture(argv[1], "eiffel", "constructs.e");
+	test_eiffel_constructs(argv[1]);
 	test_other_languages(argv[1]);
 	test_queries();
 	test_limits_and_wide_predicates();
 	test_owed_lines();
 	test_trees(argv[1]);
 	test_random_edits(argv[1], "eiffel", "sample.e");
+	test_random_edits(argv[1], "eiffel", "constructs.e");
 	test_random_edits(argv[1], "c", "sample.c");
 	test_random_edits(argv[1], "json", "sample.json");
 	test_random_edits(argv[1], "xml", "sample.ecf");

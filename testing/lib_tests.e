@@ -537,7 +537,7 @@ feature -- Test: the other languages
 		end
 
 	test_fixture_files
-			-- The four sample files of the C tests, read from testing/fixtures.
+			-- The fixture files of the C tests, read from testing/fixtures.
 		local
 			l_doc: TS_DOCUMENT
 			l_spans: TS_SPANS
@@ -564,6 +564,13 @@ feature -- Test: the other languages
 			assert_true ("line 26 has a string", l_string > 0)
 			assert_integers_equal ("at column 16", 16, l_spans.column (l_string))
 			assert_integers_equal ("17 characters long", 17, l_spans.length (l_string))
+
+				-- The constructs the Eiffel grammar is patched for.
+			create l_doc.make ("eiffel")
+			l_doc.set_text (fixture ("constructs.e"))
+			assert_false ("constructs.e parses clean", l_doc.has_error)
+			assert_spans_sound ("constructs.e", l_doc)
+			assert_true ("constructs.e folds", l_doc.folds.count >= 5)
 
 			create l_doc.make ("c")
 			l_doc.set_text (fixture ("sample.c"))
